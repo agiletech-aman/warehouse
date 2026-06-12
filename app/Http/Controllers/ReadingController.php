@@ -30,7 +30,7 @@ class ReadingController extends Controller
         $rows = [];
 
         foreach ($request->readings as $reading) {
-            $rows[] = [
+            $row = [
                 'key' => $request->key,
 
                 // Store IoT sensor identifier directly as string (NOT FK).
@@ -65,20 +65,20 @@ class ReadingController extends Controller
                 'status' => strtolower($reading['status'] ?? 'online'),
 
                 'recorded_at' => $reading['recorded_at'] ?? now(),
-
-                'created_at' => now(),
-                'updated_at' => now(),
             ];
-        }
 
-        Reading::insert($rows);
+            $createdReading = Reading::create($row);
+            $row['reading_id'] = $createdReading->id;
+
+            $rows[] = $row;
+        }
 
         // Throttled alerting (email every 1 hour max per device+type)
         // Also closes alert when status becomes normal.
         $totalAlertsCreated = 0;
         $totalAlertsClosed = 0;
         $totalAlertAttempts = 0;
-        $unmappedSensorDeviceIds = [];
+        $alertEmailsSent = 0;
 
         // IoT device resolution helpers
         $resolveDeviceId = function (?string $sensorDeviceId, ?string $sensorIp, $sensorPort) {
@@ -122,27 +122,40 @@ class ReadingController extends Controller
             return null;
         };
 
+        $resolveWarehouseForRow = function (array $row) {
+            if (!empty($row['warehouse_code'])) {
+                $warehouse = \App\Models\Warehouse::with('region')
+                    ->where('warehouse_code', $row['warehouse_code'])
+                    ->first();
+
+                if ($warehouse) {
+                    return $warehouse;
+                }
+            }
+
+            if (!empty($row['warehouse'])) {
+                return \App\Models\Warehouse::with('region')
+                    ->where('warehouse_name', $row['warehouse'])
+                    ->first();
+            }
+
+            return null;
+        };
+
         foreach ($rows as $row) {
             $sensorDeviceId = $row['sensor_device_id'];
             $sensorIp = $row['device_ip'];
             $sensorPort = $row['port'];
 
-            $deviceId = $row['device_id']; // currently null in IoT store flow
-            if (!$deviceId) {
-                $deviceId = $resolveDeviceId($sensorDeviceId, $sensorIp, $sensorPort);
-            }
-
-            if (!$deviceId) {
-                if ($sensorDeviceId && count($unmappedSensorDeviceIds) < 10) {
-                    $unmappedSensorDeviceIds[] = $sensorDeviceId;
-                }
-                continue;
+            $resolvedDeviceId = $row['device_id']; // currently null in IoT store flow
+            if (!$resolvedDeviceId) {
+                $resolvedDeviceId = $resolveDeviceId($sensorDeviceId, $sensorIp, $sensorPort);
             }
 
             // If reading comes from this device and device is online => set devices.status online
             $status = $row['status'] ?? 'online';
-            if (strtolower($status) === 'online') {
-                Device::where('id', $deviceId)->update(['status' => 'online']);
+            if ($resolvedDeviceId && strtolower($status) === 'online') {
+                Device::where('id', $resolvedDeviceId)->update(['status' => 'online']);
             }
 
             $level = $row['level'] ?? 'normal';
@@ -166,9 +179,13 @@ class ReadingController extends Controller
                 $message = 'Device is OFFLINE';
             }
 
+            $legacyAlertType = $status === 'offline'
+                ? 'device_offline'
+                : ($type === 'critical' ? 'high_co2' : 'high_phosphorus');
+
             // If normal condition: close any active alerts for this device+warning/critical.
             if ($type === null) {
-                $closed = Alert::where('device_id', $deviceId)
+                $closed = Alert::where('device_id', $sensorDeviceId)
                     ->whereIn('type', ['warning', 'critical'])
                     ->where('active', true)
                     ->update(['active' => false]);
@@ -178,21 +195,23 @@ class ReadingController extends Controller
             }
 
             // Throttle by last_email_at for (device_id, type)
-            $alert = \App\Models\Alert::where('device_id', $deviceId)
+            $alert = \App\Models\Alert::where('device_id', $sensorDeviceId)
                 ->where('type', $type)
                 ->where('active', true)
                 ->first();
 
             $alertTypeLabel = $type === 'critical' ? 'CRITICAL' : 'WARNING';
 
-            $buildMailBody = function () use ($row, $deviceId, $sensorDeviceId, $message, $alertTypeLabel, $type) {
-                $deviceForMail = \App\Models\Device::with('warehouse.region')->find($deviceId);
-                $warehouseForMail = $deviceForMail?->warehouse;
+            $buildMailBody = function () use ($row, $resolvedDeviceId, $sensorDeviceId, $message, $alertTypeLabel, $type, $resolveWarehouseForRow) {
+                $deviceForMail = $resolvedDeviceId
+                    ? \App\Models\Device::with('warehouse.region')->find($resolvedDeviceId)
+                    : null;
+                $warehouseForMail = $deviceForMail?->warehouse ?: $resolveWarehouseForRow($row);
 
-                $regionName = $warehouseForMail?->region?->region_name;
-                $regionCode = $warehouseForMail?->region?->region_code;
-                $warehouseName = $warehouseForMail?->warehouse_name;
-                $warehouseCode = $warehouseForMail?->warehouse_code;
+                $regionName = $warehouseForMail?->region?->region_name ?: ($row['region'] ?? null);
+                $regionCode = $warehouseForMail?->region?->region_code ?: ($row['region_code'] ?? null);
+                $warehouseName = $warehouseForMail?->warehouse_name ?: ($row['warehouse'] ?? null);
+                $warehouseCode = $warehouseForMail?->warehouse_code ?: ($row['warehouse_code'] ?? null);
 
                 $sensorId = $sensorDeviceId;
 
@@ -227,9 +246,12 @@ class ReadingController extends Controller
                     . "Generated by ATS IoT Monitoring\n";
             };
 
-            $sendMail = function () use ($row, $deviceId, $alertTypeLabel, $buildMailBody) {
-                $deviceForMail = \App\Models\Device::with('warehouse')->find($deviceId);
-                $managerEmail = $deviceForMail?->warehouse?->manager_email;
+            $sendMail = function () use ($row, $resolvedDeviceId, $alertTypeLabel, $buildMailBody, $resolveWarehouseForRow, &$alertEmailsSent) {
+                $deviceForMail = $resolvedDeviceId
+                    ? \App\Models\Device::with('warehouse')->find($resolvedDeviceId)
+                    : null;
+                $warehouseForMail = $deviceForMail?->warehouse ?: $resolveWarehouseForRow($row);
+                $managerEmail = $warehouseForMail?->manager_email;
 
                 if (!$managerEmail) {
                     return;
@@ -238,8 +260,8 @@ class ReadingController extends Controller
                 try {
                     $mailBody = $buildMailBody();
 
-                    $warehouseName = $deviceForMail?->warehouse?->warehouse_name;
-                    $warehouseCode = $deviceForMail?->warehouse?->warehouse_code;
+                    $warehouseName = $warehouseForMail?->warehouse_name ?: ($row['warehouse'] ?? null);
+                    $warehouseCode = $warehouseForMail?->warehouse_code ?: ($row['warehouse_code'] ?? null);
                     $target = ($warehouseCode && $warehouseName)
                         ? "{$warehouseName} ({$warehouseCode})"
                         : ($warehouseName ?: ($warehouseCode ?: 'Warehouse'));
@@ -250,6 +272,8 @@ class ReadingController extends Controller
                             $m->to($managerEmail)->subject('Warehouse Alert [' . $alertTypeLabel . ']: ' . $target);
                         }
                     );
+
+                    $alertEmailsSent++;
                 } catch (\Throwable $e) {
                     // swallow to avoid breaking ingestion
                 }
@@ -257,27 +281,38 @@ class ReadingController extends Controller
 
             if (!$alert) {
                 $created = Alert::create([
-                    'device_id' => $deviceId,
+                    'device_id' => $sensorDeviceId,
+                    'reading_id' => $row['reading_id'] ?? null,
                     'type' => $type,
                     'message' => $message,
                     'last_email_at' => now(),
                     'active' => true,
                     // legacy columns
-                    'alert_type' => $type === 'critical' ? 'high_co2' : 'high_phosphorus',
+                    'alert_type' => $legacyAlertType,
                     'alert_value' => $row['reading_value'] ?? 0,
                 ]);
 
                 $totalAlertsCreated += $created ? 1 : 0;
 
-                $sendMail();
-            } else {
-                $last = $alert->last_email_at;
-                $canSend = !$last || \Carbon\Carbon::parse($last)->addHour()->lte(now());
+                $warehouseAlertThrottleKey = 'warehouse-alert-mail:' . sha1(implode('|', [
+                    $sensorDeviceId,
+                    $row['warehouse_code'] ?? $row['warehouse'] ?? '',
+                    $type,
+                ]));
 
-                if ($canSend) {
+                if (\Illuminate\Support\Facades\Cache::add($warehouseAlertThrottleKey, true, now()->addHour())) {
                     $sendMail();
-                    $alert->update(['last_email_at' => now()]);
                 }
+
+                continue;
+            }
+
+            $last = $alert->last_email_at;
+            $canSend = !$last || \Carbon\Carbon::parse($last)->addHour()->lte(now());
+
+            if ($canSend) {
+                $sendMail();
+                $alert->update(['last_email_at' => now()]);
             }
         }
 
@@ -289,7 +324,7 @@ class ReadingController extends Controller
                 'attempts' => $totalAlertAttempts,
                 'alerts_created' => $totalAlertsCreated,
                 'alerts_closed' => $totalAlertsClosed,
-                'unmapped_sensor_device_ids_sample' => array_values(array_slice($unmappedSensorDeviceIds, 0, 10)),
+                'alert_emails_sent' => $alertEmailsSent,
             ],
         ]);
     }
@@ -336,4 +371,3 @@ class ReadingController extends Controller
         return redirect()->route('readings.index')->with('success', 'Reading deleted successfully.');
     }
 }
-

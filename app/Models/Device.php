@@ -28,4 +28,14 @@ class Device extends Model
     {
         return $this->belongsTo(Warehouse::class);
     }
+
+    public function readings()
+    {
+        return $this->hasMany(Reading::class);
+    }
+
+    public function latestReading()
+    {
+        return $this->hasOne(Reading::class)->latestOfMany('recorded_at');
+    }
 }

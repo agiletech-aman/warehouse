@@ -27,7 +27,7 @@ class AlertController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'device_id' => 'required|exists:devices,id',
+            'device_id' => 'required|exists:devices,device_code',
             'reading_id' => 'nullable|exists:readings,id',
             'alert_type' => 'required|in:high_co2,high_phosphorus,device_offline',
             'alert_value' => 'required|numeric',
@@ -56,7 +56,7 @@ class AlertController extends Controller
     public function update(Request $request, Alert $alert)
     {
         $request->validate([
-            'device_id' => 'required|exists:devices,id',
+            'device_id' => 'required|exists:devices,device_code',
             'reading_id' => 'nullable|exists:readings,id',
             'alert_type' => 'required|in:high_co2,high_phosphorus,device_offline',
             'alert_value' => 'required|numeric',

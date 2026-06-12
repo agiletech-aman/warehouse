@@ -31,7 +31,7 @@
                 <tbody>
                 @foreach($alerts as $alert)
                     <tr>
-                        <td>{{ optional($alert->device)->device_name }}</td>
+                        <td>{{ optional($alert->device)->device_name ?: ($alert->reading?->device_name ?: $alert->device_id) }}</td>
 
                         <td>
                             @php
@@ -95,4 +95,3 @@
     });
 </script>
 @endsection
-

@@ -12,7 +12,7 @@ class WarehouseController extends Controller
     {
         $warehouses = Warehouse::with('region')
             ->latest()
-            ->get();
+            ->paginate(10);
 
 
         return view('warehouses.index', compact('warehouses'));
@@ -127,4 +127,3 @@ class WarehouseController extends Controller
             ->with('success', 'Warehouse Deleted Successfully');
     }
 }
-

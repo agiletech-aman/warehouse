@@ -13,11 +13,10 @@ class DeviceController extends Controller
     public function index()
     {
         $latestReadingIds = Reading::select(DB::raw('MAX(id) as id'))
-            ->whereNotNull('device_id')
-            ->groupBy('device_id');
+            ->whereNotNull('sensor_device_id')
+            ->groupBy('sensor_device_id');
 
-        $devices = Reading::with(['device.warehouse'])
-            ->whereIn('id', $latestReadingIds)
+        $devices = Reading::whereIn('id', $latestReadingIds)
             ->latest('recorded_at')
             ->paginate(10);
 

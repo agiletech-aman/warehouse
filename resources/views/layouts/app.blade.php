@@ -23,7 +23,6 @@
         }
 
         .wrapper{
-            display:flex;
             min-height:100vh;
         }
 
@@ -38,6 +37,7 @@
             background:#111827;
             transition:.3s;
             overflow:hidden;
+            z-index:100;
         }
 
         .sidebar.collapsed{
@@ -119,15 +119,17 @@
         /* Main */
 
         .main{
-            margin-left:250px;
-            width:calc(100% - 250px);
+            margin-left:0;
+            padding-left:250px;
+            width:100%;
             min-height:100vh;
             transition:.3s;
+            min-width:0;
         }
 
         .main.expand{
-            margin-left:80px;
-            width:calc(100% - 80px);
+            padding-left:80px;
+            width:100%;
         }
 
         /* Navbar */
@@ -282,6 +284,13 @@
             </li>
 
             <li>
+                <a href="{{ route('devices.index') }}">
+                    <span class="icon">D</span>
+                    <span class="menu-text">Devices</span>
+                </a>
+            </li>
+
+            <li>
                 <a href="{{ route('alerts.index') }}">
                     <span class="icon">🚨</span>
                     <span class="menu-text">Alerts</span>
@@ -373,4 +382,3 @@
 @yield('scripts')
 </body>
 </html>
-

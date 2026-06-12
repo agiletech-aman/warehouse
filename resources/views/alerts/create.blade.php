@@ -15,7 +15,7 @@
                 <select name="device_id" class="form-control">
                     <option value="">Select Device</option>
                     @foreach($devices as $device)
-                        <option value="{{ $device->id }}" @selected(old('device_id') == $device->id)>{{ $device->device_name }}</option>
+                        <option value="{{ $device->device_code }}" @selected(old('device_id') == $device->device_code)>{{ $device->device_name }}</option>
                     @endforeach
                 </select>
                 @error('device_id')<div class="text-danger small">{{ $message }}</div>@enderror

@@ -93,6 +93,10 @@
             </table>
         </div>
 
+        <div class="mt-3">
+            {{ $warehouses->links() }}
+        </div>
+
     </div>
 
 </div>
@@ -100,4 +104,21 @@
 
 @endsection
 
-
+@section('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (window.jQuery && $.fn.DataTable && $('#warehousesTable').length) {
+            $('#warehousesTable').DataTable({
+                responsive: true,
+                paging: false,
+                info: false,
+                searching: true,
+                order: [[0, 'asc']],
+                language: {
+                    search: 'Search warehouses:'
+                }
+            });
+        }
+    });
+</script>
+@endsection

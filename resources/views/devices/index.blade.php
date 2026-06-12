@@ -9,10 +9,8 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div>
                 <h3 class="mb-1">Devices</h3>
-                <p class="text-muted mb-0">Manage all IoT devices linked to warehouses.</p>
+                <p class="text-muted mb-0">Latest IoT devices received from sensor readings.</p>
             </div>
-
-            <a href="{{ route('devices.create') }}" class="btn btn-primary rounded-pill px-3">+ Add Device</a>
         </div>
 
         @if(session('success'))
@@ -25,26 +23,53 @@
                 <tr>
                     <th>Code</th>
                     <th>Name</th>
+                    <th>Region</th>
                     <th>Warehouse</th>
                     <th>Type</th>
+                    <th>Location</th>
+                    <th>Latest Reading</th>
                     <th>Status</th>
                 </tr>
                 </thead>
                 <tbody>
                 @foreach($devices as $device)
                     <tr>
-                        <td>{{ optional($device->device)->device_code ?: '-' }}</td>
-                        <td>{{ optional($device->device)->device_name ?: '-' }}</td>
-                        <td>{{ optional(optional($device->device)->warehouse)->warehouse_name ?: '-' }}</td>
-                        <td>{{ optional($device->device)->device_type ?: '-' }}</td>
+                        <td>{{ $device->sensor_device_id ?: '-' }}</td>
+                        <td>{{ $device->device_name ?: '-' }}</td>
                         <td>
-                            @php($deviceStatus = optional($device->device)->status ?? $device->status ?? 'offline')
+                            {{ $device->region ?: ($device->region_code ?: '-') }}
+                            @if($device->region_code)
+                                <span class="text-muted">({{ $device->region_code }})</span>
+                            @endif
+                        </td>
+                        <td>
+                            {{ $device->warehouse ?: ($device->warehouse_code ?: '-') }}
+                            @if($device->warehouse_code)
+                                <span class="text-muted">({{ $device->warehouse_code }})</span>
+                            @endif
+                        </td>
+                        <td>{{ $device->device_type ?: '-' }}</td>
+                        <td>{{ $device->godown ?: '-' }}{{ $device->compartment ? ' / '.$device->compartment : '' }}</td>
+                        <td>
+                            {{ $device->reading_value ?? '-' }}
+                            @if($device->unit)
+                                {{ $device->unit }}
+                            @endif
+                        </td>
+                        <td>
+                            @php($deviceStatus = $device->status ?? 'offline')
                             @if($deviceStatus === 'online')
                                 <span class="badge bg-success">Online</span>
-                            @elseif($deviceStatus === 'maintenance')
-                                <span class="badge bg-warning text-dark">Maintenance</span>
-                            @else
+                            @elseif($deviceStatus === 'offline')
                                 <span class="badge bg-secondary">Offline</span>
+                            @else
+                                <span class="badge bg-light text-dark">{{ ucfirst($deviceStatus) }}</span>
+                            @endif
+
+                            @if($device->level === 'critical')
+                                <span class="badge bg-danger">Critical</span>
+                            @elseif($device->level === 'warning')
+                                <span class="badge bg-warning text-dark">Warning</span>
                             @endif
                         </td>
                     </tr>
