@@ -1,4 +1,3 @@
-```blade
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -228,7 +227,6 @@
             border-radius:15px;
             box-shadow:0 3px 10px rgba(0,0,0,.08);
         }
-
     </style>
 </head>
 <body>
@@ -257,22 +255,22 @@
 
             <li>
                 <a href="{{ route('regions.index') }}">
-    <span class="icon">🌎</span>
-    <span class="menu-text">Regions</span>
-</a>
+                    <span class="icon">🌎</span>
+                    <span class="menu-text">Regions</span>
+                </a>
+            </li>
+
+            <li>
+                <a href="{{ route('hierarchy.index') }}">
+                    <span class="icon">🧩</span>
+                    <span class="menu-text">Hierarchy</span>
+                </a>
             </li>
 
             <li>
                 <a href="{{ route('warehouses.index') }}">
                     <span class="icon">🏬</span>
                     <span class="menu-text">Warehouses</span>
-                </a>
-            </li>
-
-            <li>
-                <a href="{{ route('devices.index') }}">
-                    <span class="icon">📱</span>
-                    <span class="menu-text">Devices</span>
                 </a>
             </li>
 
@@ -289,7 +287,6 @@
                     <span class="menu-text">Alerts</span>
                 </a>
             </li>
-
 
             <li>
                 <a href="{{ route('admin.settings') }}">
@@ -325,10 +322,18 @@
 
 </div>
 
+<!-- Bootstrap CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<!-- DataTables CSS -->
+<link href="https://cdn.datatables.net/2.3.2/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+
+<!-- jQuery & DataTables JS -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/2.3.2/js/dataTables.min.js"></script>
-<script>
+<script src="https://cdn.datatables.net/2.3.2/js/dataTables.bootstrap5.min.js"></script>
 
+<script>
     let sidebar = document.getElementById('sidebar');
     let main = document.getElementById('main');
     const STORAGE_KEY = 'warehouseSidebarCollapsed';
@@ -347,31 +352,25 @@
     document.addEventListener('DOMContentLoaded', function () {
         const savedState = localStorage.getItem(STORAGE_KEY) === 'true';
         applySidebarState(savedState);
+
         if (window.jQuery && $.fn.DataTable) {
             if ($('#regionsTable').length) {
                 $('#regionsTable').DataTable({
                     responsive: true,
-                    pageLength: 10,
+                    paging: false,
+                    info: false,
+                    searching: true,
                     order: [[0, 'asc']],
                     language: {
-                        search: 'Search regions:',
-                        lengthMenu: 'Show _MENU_ entries'
+                        search: 'Search regions:'
                     }
                 });
             }
         }
     });
-
 </script>
 
 @yield('scripts')
-
-<!-- Bootstrap -->
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-<!-- DataTables -->
-<link rel="stylesheet"
-      href="https://cdn.datatables.net/2.3.2/css/dataTables.dataTables.css">
 </body>
 </html>
-```
+

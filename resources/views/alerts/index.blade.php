@@ -22,17 +22,51 @@
                 <tr>
                     <th>Device</th>
                     <th>Alert Type</th>
+                    <th>Alert Message</th>
                     <th>Value</th>
-                    <th>Reading</th>
+                    <th>Triggered At</th>
+                    <th>Mail Status</th>
                 </tr>
                 </thead>
                 <tbody>
                 @foreach($alerts as $alert)
                     <tr>
                         <td>{{ optional($alert->device)->device_name }}</td>
-                        <td>{{ str_replace('_', ' ', ucfirst($alert->alert_type)) }}</td>
-                        <td>{{ $alert->alert_value }}</td>
-                        <td>{{ optional($alert->reading)->id ? 'Reading #' . $alert->reading_id : '-' }}</td>
+
+                        <td>
+                            @php
+                                $alertType = $alert->type ?? $alert->alert_type ?? 'alert';
+                                $alertLabel = str_replace('_', ' ', ucfirst($alertType));
+                                $alertClass = 'bg-secondary';
+
+                                if (str_contains($alertType, 'critical') || str_contains($alertType, 'high') || $alertType === 'device_offline') {
+                                    $alertClass = 'bg-danger';
+                                } elseif (str_contains($alertType, 'warn') || str_contains($alertType, 'warning')) {
+                                    $alertClass = 'bg-warning text-dark';
+                                } else {
+                                    $alertClass = 'bg-info text-dark';
+                                }
+                            @endphp
+                            <span class="badge {{ $alertClass }} rounded-pill">{{ $alertLabel }}</span>
+                        </td>
+
+                        <td>
+                            {{ $alert->message ?: (str_replace('_', ' ', ucfirst($alert->type ?? $alert->alert_type ?? 'Alert'))) }}
+                        </td>
+
+                        <td>{{ $alert->alert_value ?? $alert->reading?->reading_value ?? '-' }}</td>
+
+                        <td>{{ $alert->created_at ? $alert->created_at->format('d M Y H:i') : '-' }}</td>
+
+                        <td>
+                            @if($alert->last_email_at)
+                                <span class="badge bg-success">Sent</span>
+                            @else
+                                <span class="badge bg-warning text-dark">Pending</span>
+                            @endif
+                        </td>
+
+
                     </tr>
                 @endforeach
                 </tbody>
@@ -61,3 +95,4 @@
     });
 </script>
 @endsection
+

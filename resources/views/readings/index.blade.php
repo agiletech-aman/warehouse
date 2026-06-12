@@ -10,7 +10,7 @@
                 <h3 class="mb-1">Readings</h3>
                 <p class="text-muted mb-0">Monitor all sensor readings from devices.</p>
             </div>
-            <a href="{{ route('readings.create') }}" class="btn btn-primary rounded-pill px-3">+ Add Reading</a>
+
         </div>
 
         @if(session('success'))
@@ -22,40 +22,49 @@
                 <thead>
                 <tr>
                     <th>Device</th>
+                    <th>Type</th>
+                    <th>Sensor</th>
                     <th>Value</th>
                     <th>Unit</th>
+                    <th>Region/Warehouse</th>
+                    <th>Godown/Compartment</th>
+                    <th>Level</th>
                     <th>Status</th>
+
                     <th>Recorded At</th>
-                    <th>Action</th>
+                    
                 </tr>
                 </thead>
                 <tbody>
                 @foreach($readings as $reading)
                     <tr>
-                        <td>{{ optional($reading->device)->device_name }}</td>
+                        <td>{{ $reading->device_name ?? optional($reading->device)->device_name }}</td>
+                        <td>{{ $reading->device_type }}</td>
+                        <td>{{ $reading->sensor_device_id }}</td>
                         <td>{{ $reading->reading_value }}</td>
                         <td>{{ $reading->unit }}</td>
+                        <td>{{ $reading->region_code ?? $reading->region }}{{ ($reading->warehouse_code ?? $reading->warehouse) ? ' / '.($reading->warehouse_code ?? $reading->warehouse) : '' }}</td>
+                        <td>{{ $reading->godown }}{{ ($reading->compartment) ? ' / '.($reading->compartment) : '' }}</td>
                         <td>
-                            @if($reading->status === 'critical')
+                            @if($reading->level === 'critical')
                                 <span class="badge bg-danger">Critical</span>
-                            @elseif($reading->status === 'warning')
+                            @elseif($reading->level === 'warning')
                                 <span class="badge bg-warning text-dark">Warning</span>
                             @else
                                 <span class="badge bg-success">Normal</span>
                             @endif
                         </td>
-                        <td>{{ $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i') : '-' }}</td>
                         <td>
-                            <div class="d-flex gap-2">
-                                <a href="{{ route('readings.show', $reading->id) }}" class="btn btn-info btn-sm rounded-pill px-3">View</a>
-                                <a href="{{ route('readings.edit', $reading->id) }}" class="btn btn-warning btn-sm rounded-pill px-3">Edit</a>
-                                <form action="{{ route('readings.destroy', $reading->id) }}" method="POST" class="d-inline">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button class="btn btn-danger btn-sm rounded-pill px-3">Delete</button>
-                                </form>
-                            </div>
+                            @if($reading->status === 'offline')
+                                <span class="badge bg-secondary">Offline</span>
+                            @elseif($reading->status === 'online')
+                                <span class="badge bg-success">Online</span>
+                            @else
+                                <span class="badge bg-light text-dark">{{ ucfirst($reading->status ?? 'Unknown') }}</span>
+                            @endif
                         </td>
+                        <td>{{ $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i') : '-' }}</td>
+                      
                     </tr>
                 @endforeach
                 </tbody>
@@ -67,6 +76,23 @@
 </div>
 @endsection
 
+@section('styles')
+<style>
+    #readingsTable_wrapper .dataTables_filter {
+        margin-right: 0;
+    }
+
+    #readingsTable_wrapper .dataTables_filter input {
+        margin-left: 0.35rem;
+    }
+
+    #readingsTable_wrapper .dataTables_length,
+    #readingsTable_wrapper .dataTables_filter {
+        margin-bottom: 0;
+    }
+</style>
+@endsection
+
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -74,7 +100,8 @@
             $('#readingsTable').DataTable({
                 responsive: true,
                 pageLength: 10,
-                order: [[4, 'desc']],
+                order: [[7, 'desc']],
+
                 language: {
                     search: 'Search readings:',
                     lengthMenu: 'Show _MENU_ entries'

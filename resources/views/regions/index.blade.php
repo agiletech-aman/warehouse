@@ -16,9 +16,17 @@
                 <p class="text-muted mb-0">Manage warehouse regions and update their status quickly.</p>
             </div>
 
-            <a href="{{ route('regions.create') }}" class="btn btn-primary rounded-pill px-3">
-                + Add Region
-            </a>
+            <div class="d-flex align-items-center gap-2">
+                <input type="text"
+                       id="regionsSearch"
+                       class="form-control form-control-sm"
+                       style="width: 260px;"
+                       placeholder="Search (code/name/status)" />
+
+                <a href="{{ route('regions.create') }}" class="btn btn-primary btn-sm rounded-pill px-3">
+                    + Add Region
+                </a>
+            </div>
 
         </div>
 
@@ -98,8 +106,42 @@
 </table>
         </div>
 
+        <div class="mt-3">
+            {{ $regions->links() }}
+        </div>
+
+
     </div>
 
 </div>
 
+@section('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const input = document.getElementById('regionsSearch');
+        if (!input) return;
+
+        const table = $('#regionsTable');
+        const dt = table.length && $.fn.DataTable ? table.DataTable() : null;
+        if (!dt) return;
+
+        // Hide/disable DataTables default search UI (if it exists)
+        // DataTables 2.x often renders its search in the wrapper.
+        try {
+            $(dt.table().container()).find('div.dataTables_filter').hide();
+        } catch (e) {
+            // ignore
+        }
+
+        const apply = function () {
+            dt.search(input.value).draw();
+        };
+
+        // Instant filter (good UX)
+        input.addEventListener('input', apply);
+
+        // If user clears the input, reset search
+        apply();
+    });
+</script>
 @endsection

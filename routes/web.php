@@ -9,8 +9,8 @@ use App\Http\Controllers\RegionController;
 use App\Http\Controllers\WarehouseController;
 
 
-Route::get('/admin/login', [AdminController::class, 'showLogin'])->name('admin.login');
-Route::post('/admin/login', [AdminController::class, 'login'])->name('admin.login.post');
+Route::get('/', [AdminController::class, 'showLogin'])->name('admin.login');
+Route::post('/', [AdminController::class, 'login'])->name('admin.login.post');
 
 Route::get('/admin/dashboard', [AdminController::class, 'dashboard'])
     ->name('admin.dashboard');
@@ -29,4 +29,10 @@ Route::resource('warehouses', WarehouseController::class);
 Route::resource('devices', DeviceController::class);
 Route::resource('readings', ReadingController::class);
 Route::resource('alerts', AlertController::class);
+
+Route::get('/hierarchy', function () {
+    return view('hierarchy.index');
+})->name('hierarchy.index');
+
+
 

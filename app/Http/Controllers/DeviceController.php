@@ -3,14 +3,23 @@
 namespace App\Http\Controllers;
 
 use App\Models\Device;
+use App\Models\Reading;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DeviceController extends Controller
 {
     public function index()
     {
-        $devices = Device::with('warehouse')->latest()->paginate(10);
+        $latestReadingIds = Reading::select(DB::raw('MAX(id) as id'))
+            ->whereNotNull('device_id')
+            ->groupBy('device_id');
+
+        $devices = Reading::with(['device.warehouse'])
+            ->whereIn('id', $latestReadingIds)
+            ->latest('recorded_at')
+            ->paginate(10);
 
         return view('devices.index', compact('devices'));
     }

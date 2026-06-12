@@ -60,10 +60,16 @@
                             </div>
                         </td>
                         <td>
-                            @if($warehouse->status === 'active')
+                            @php
+                                $status = strtolower((string) ($warehouse->status ?? ''));
+                            @endphp
+
+                            @if($status === 'active')
                                 <span class="badge bg-success">Active</span>
-                            @else
+                            @elseif($status === 'inactive')
                                 <span class="badge bg-danger">Inactive</span>
+                            @else
+                                <span class="badge bg-secondary">{{ $warehouse->status ?: 'Unknown' }}</span>
                             @endif
                         </td>
                         <td>
@@ -87,31 +93,11 @@
             </table>
         </div>
 
-        <div class="mt-3">
-            {{ $warehouses->links() }}
-        </div>
-
     </div>
 
 </div>
 
+
 @endsection
 
-@section('scripts')
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        if (window.jQuery && $.fn.DataTable && $('#warehousesTable').length) {
-            $('#warehousesTable').DataTable({
-                responsive: true,
-                pageLength: 10,
-                order: [[0, 'asc']],
-                language: {
-                    search: 'Search warehouses:',
-                    lengthMenu: 'Show _MENU_ entries'
-                }
-            });
-        }
-    });
-</script>
-@endsection
 

@@ -12,7 +12,8 @@ class WarehouseController extends Controller
     {
         $warehouses = Warehouse::with('region')
             ->latest()
-            ->paginate(10);
+            ->get();
+
 
         return view('warehouses.index', compact('warehouses'));
     }
@@ -35,8 +36,9 @@ class WarehouseController extends Controller
             'manager_phone' => 'nullable|string|max:20',
             'address' => 'nullable|string',
             'city' => 'nullable|string|max:100',
-'state' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:100',
             'country' => 'nullable|string|max:100',
+
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'status' => 'required|in:active,inactive',

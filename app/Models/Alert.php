@@ -12,9 +12,18 @@ class Alert extends Model
     protected $fillable = [
         'device_id',
         'reading_id',
+
+        // legacy columns
         'alert_type',
         'alert_value',
+
+        // throttling columns
+        'type',
+        'message',
+        'last_email_at',
+        'active',
     ];
+
 
     public function device()
     {
