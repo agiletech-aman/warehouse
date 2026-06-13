@@ -23,7 +23,7 @@
                     @if($device->status === 'online')
                         <span class="badge bg-success">Online</span>
                     @elseif($device->status === 'maintenance')
-                        <span class="badge bg-warning text-dark">Maintenance</span>
+                        <span class="badge bg-severe text-dark">Maintenance</span>
                     @else
                         <span class="badge bg-secondary">Offline</span>
                     @endif
@@ -31,7 +31,7 @@
             </div>
 
             <div class="mt-4 d-flex gap-2">
-                <a href="{{ route('devices.edit', $device->id) }}" class="btn btn-warning">Edit</a>
+                <a href="{{ route('devices.edit', $device->id) }}" class="btn btn-severe">Edit</a>
                 <a href="{{ route('devices.index') }}" class="btn btn-secondary">Back</a>
             </div>
         </div>

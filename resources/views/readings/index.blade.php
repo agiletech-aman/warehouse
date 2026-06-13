@@ -48,8 +48,8 @@
                         <td>
                             @if($reading->level === 'critical')
                                 <span class="badge bg-danger">Critical</span>
-                            @elseif($reading->level === 'warning')
-                                <span class="badge bg-warning text-dark">Warning</span>
+                            @elseif($reading->level === 'severe')
+                                <span class="badge bg-severe text-dark">Severe</span>
                             @else
                                 <span class="badge bg-success">Normal</span>
                             @endif

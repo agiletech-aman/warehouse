@@ -40,7 +40,7 @@ class DeviceModuleTest extends TestCase
             'godown' => 'Godown 1',
             'compartment' => 'Compartment A',
             'reading_value' => 28.5,
-            'level' => 'warning',
+            'level' => 'severe',
             'status' => 'online',
             'recorded_at' => now(),
         ]);

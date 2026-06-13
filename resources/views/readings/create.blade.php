@@ -23,7 +23,7 @@
             <label class="form-label">Level</label>
             <select name="level" class="form-control">
                 <option value="normal">normal</option>
-                <option value="warning">warning</option>
+                <option value="severe">severe</option>
                 <option value="critical">critical</option>
             </select>
         </div>

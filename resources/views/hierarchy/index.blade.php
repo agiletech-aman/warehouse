@@ -258,8 +258,8 @@
                                                     <div class="hierarchy-meta">
                                                         @if($device->level === 'critical')
                                                             <span class="badge bg-danger">Critical</span>
-                                                        @elseif($device->level === 'warning')
-                                                            <span class="badge bg-warning text-dark">Warning</span>
+                                                        @elseif($device->level === 'severe')
+                                                            <span class="badge bg-severe text-dark">severe</span>
                                                         @else
                                                             <span class="badge bg-success">Normal</span>
                                                         @endif

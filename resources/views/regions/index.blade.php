@@ -69,7 +69,7 @@
 
 <div class="d-flex gap-2">
     <a href="{{ route('regions.edit',$region->id) }}"
-       class="btn btn-warning btn-sm rounded-pill px-3">
+       class="btn btn-severe btn-sm rounded-pill px-3">
         Edit
     </a>
 

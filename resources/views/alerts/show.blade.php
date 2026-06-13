@@ -16,7 +16,7 @@
             </div>
 
             <div class="mt-4 d-flex gap-2">
-                <a href="{{ route('alerts.edit', $alert->id) }}" class="btn btn-warning">Edit</a>
+                <a href="{{ route('alerts.edit', $alert->id) }}" class="btn btn-severe">Edit</a>
                 <a href="{{ route('alerts.index') }}" class="btn btn-secondary">Back</a>
             </div>
         </div>

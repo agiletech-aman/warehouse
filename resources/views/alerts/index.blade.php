@@ -41,8 +41,8 @@
 
                                 if (str_contains($alertType, 'critical') || str_contains($alertType, 'high') || $alertType === 'device_offline') {
                                     $alertClass = 'bg-danger';
-                                } elseif (str_contains($alertType, 'warn') || str_contains($alertType, 'warning')) {
-                                    $alertClass = 'bg-warning text-dark';
+                                } elseif (str_contains($alertType, 'warn') || str_contains($alertType, 'severe')) {
+                                    $alertClass = 'bg-severe text-dark';
                                 } else {
                                     $alertClass = 'bg-info text-dark';
                                 }
@@ -62,7 +62,7 @@
                             @if($alert->last_email_at)
                                 <span class="badge bg-success">Sent</span>
                             @else
-                                <span class="badge bg-warning text-dark">Pending</span>
+                                <span class="badge bg-severe text-dark">Pending</span>
                             @endif
                         </td>
 

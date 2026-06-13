@@ -58,7 +58,7 @@ class ReadingController extends Controller
 
                 'reading_value' => $reading['value'] ?? null,
 
-                // level: normal/warning/critical
+                // level: normal/severe/critical
                 'level' => strtolower($reading['level'] ?? 'normal'),
 
                 // status: online/offline
@@ -168,14 +168,14 @@ class ReadingController extends Controller
             if ($level === 'critical') {
                 $type = 'critical';
                 $message = 'Critical Alert: Immediate action required.';
-            } elseif ($level === 'warning') {
-                $type = 'warning';
-                $message = 'Warning: Parameter out of range.';
+            } elseif ($level === 'severe') {
+                $type = 'severe';
+                $message = 'severe: Parameter out of range.';
             }
 
             // device_offline handling (optional)
             if ($type === null && $status === 'offline') {
-                $type = 'warning';
+                $type = 'severe';
                 $message = 'Device is OFFLINE';
             }
 
@@ -183,10 +183,10 @@ class ReadingController extends Controller
                 ? 'device_offline'
                 : ($type === 'critical' ? 'high_co2' : 'high_phosphorus');
 
-            // If normal condition: close any active alerts for this device+warning/critical.
+            // If normal condition: close any active alerts for this device+severe/critical.
             if ($type === null) {
                 $closed = Alert::where('device_id', $sensorDeviceId)
-                    ->whereIn('type', ['warning', 'critical'])
+                    ->whereIn('type', ['severe', 'critical'])
                     ->where('active', true)
                     ->update(['active' => false]);
 
@@ -200,7 +200,7 @@ class ReadingController extends Controller
                 ->where('active', true)
                 ->first();
 
-            $alertTypeLabel = $type === 'critical' ? 'CRITICAL' : 'WARNING';
+            $alertTypeLabel = $type === 'critical' ? 'CRITICAL' : 'severe';
 
             $buildMailBody = function () use ($row, $resolvedDeviceId, $sensorDeviceId, $message, $alertTypeLabel, $type, $resolveWarehouseForRow) {
                 $deviceForMail = $resolvedDeviceId
@@ -349,7 +349,7 @@ class ReadingController extends Controller
             'device_id' => 'required|exists:devices,id',
             'reading_value' => 'required|numeric',
             'unit' => 'required|string|max:20',
-            'status' => 'required|in:normal,warning,critical',
+            'status' => 'required|in:normal,severe,critical',
             'recorded_at' => 'nullable|date',
         ]);
 

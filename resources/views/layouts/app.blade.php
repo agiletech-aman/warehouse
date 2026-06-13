@@ -229,6 +229,11 @@
             border-radius:15px;
             box-shadow:0 3px 10px rgba(0,0,0,.08);
         }
+
+        /* Custom severity badge colors (Bootstrap doesn't include bg-severe) */
+        .bg-severe{
+            background-color:#f59e0b !important;
+        }
     </style>
 </head>
 <body>

@@ -17,7 +17,7 @@ return new class extends Migration
 
             $table->decimal('reading_value', 10, 2);
             $table->string('unit', 20);
-            $table->enum('status', ['normal', 'warning', 'critical'])->default('normal');
+            $table->enum('status', ['normal', 'severe', 'critical'])->default('normal');
             $table->timestamp('recorded_at')->useCurrent();
 
             $table->softDeletes();

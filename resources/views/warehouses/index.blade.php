@@ -74,7 +74,7 @@
                         </td>
                         <td>
                             <div class="d-flex gap-2">
-                                <a href="{{ route('warehouses.edit', $warehouse->id) }}" class="btn btn-warning btn-sm rounded-pill px-3">
+                                <a href="{{ route('warehouses.edit', $warehouse->id) }}" class="btn btn-severe btn-sm rounded-pill px-3">
                                     Edit
                                 </a>
 
