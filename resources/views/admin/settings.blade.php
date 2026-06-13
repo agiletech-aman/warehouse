@@ -7,7 +7,7 @@
 @section('content')
 
 <div class="content-shell">
-    <div class="card border-0 shadow-sm p-4" style="max-width: 640px;">
+    <div class="card border-0 shadow-sm p-4" style="max-width: 640px; justify-self: center; margin: 0 auto;">
         <h3 class="mb-1">Change Password</h3>
         <p class="text-muted mb-4">Enter your current password and a new password to update your account.</p>
 

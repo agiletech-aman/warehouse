@@ -50,10 +50,75 @@ class AdminController extends Controller
         }
 
         $totalWarehouses = Warehouse::count();
-        $activeWarehouses = Warehouse::count();
+
+        // Active warehouses definition (as per requirement): warehouses that have any reading in last 24 hours.
+        // IoT store flow keeps device_id nullable, so infer activity from readings -> warehouse_code/warehouse.
+        $activeWarehouses = Warehouse::query()
+            ->where(function ($q) {
+                $q->whereExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('readings')
+                        ->where('recorded_at', '>=', now()->subDay())
+                        ->whereColumn('readings.warehouse_code', 'warehouses.warehouse_code');
+                });
+            })
+            ->orWhere(function ($q) {
+                $q->whereExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('readings')
+                        ->where('recorded_at', '>=', now()->subDay())
+                        ->whereColumn('readings.warehouse', 'warehouses.warehouse_name');
+                });
+            })
+            ->distinct('warehouses.id')
+            ->count('warehouses.id');
+
+
         $totalRegions = Region::count();
 
-        return view('admin.dashboard', compact('totalWarehouses', 'activeWarehouses', 'totalRegions'));
+        // Device status from readings (latest status per sensor_device_id within last 24 hours)
+        $onlineDevices = \App\Models\Reading::query()
+            ->selectRaw('sensor_device_id')
+            ->whereNotNull('sensor_device_id')
+            ->where('recorded_at', '>=', now()->subDay())
+            ->groupBy('sensor_device_id')
+            ->havingRaw("MAX(CASE WHEN LOWER(status) = 'online' THEN 1 ELSE 0 END) = 1")
+            ->count();
+
+        $offlineDevices = \App\Models\Reading::query()
+            ->selectRaw('sensor_device_id')
+            ->whereNotNull('sensor_device_id')
+            ->where('recorded_at', '>=', now()->subDay())
+            ->groupBy('sensor_device_id')
+            ->havingRaw("MAX(CASE WHEN LOWER(status) = 'offline' THEN 1 ELSE 0 END) = 1")
+            ->count();
+
+
+        $criticalActiveAlerts = \App\Models\Alert::where('active', true)
+            ->where(function ($q) {
+                $q->where('type', 'critical')
+                    ->orWhere('type', 'severe')
+                    ->orWhere('type', 'device_offline');
+            })
+            ->count();
+
+        $last24hAlertsCount = \App\Models\Alert::where('created_at', '>=', now()->subDay())->count();
+
+        $latestReadings = \App\Models\Reading::with('device')
+            ->latest('recorded_at')
+            ->take(5)
+            ->get();
+
+        return view('admin.dashboard', compact(
+            'totalWarehouses',
+            'activeWarehouses',
+            'totalRegions',
+            'onlineDevices',
+            'offlineDevices',
+            'criticalActiveAlerts',
+            'last24hAlertsCount',
+            'latestReadings'
+        ));
     }
 
     public function settings()

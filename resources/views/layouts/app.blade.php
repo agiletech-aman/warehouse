@@ -34,11 +34,14 @@
             top:0;
             width:250px;
             height:100vh;
-            background:#111827;
-            transition:.3s;
+            background:#0f172a;
+            transition:.25s ease;
             overflow:hidden;
             z-index:100;
+            box-shadow: 10px 0 30px rgba(2, 6, 23, 0.25);
+            border-right:1px solid rgba(255,255,255,.06);
         }
+
 
         .sidebar.collapsed{
             width:80px;
@@ -234,6 +237,17 @@
         .bg-severe{
             background-color:#f59e0b !important;
         }
+
+        .menu li a.active{
+    background:#1e293b;
+    color:#fff;
+    border-left:4px solid #3b82f6;
+    font-weight:600;
+}
+
+.menu li a.active .icon{
+    color:#3b82f6;
+}
     </style>
 </head>
 <body>
@@ -244,7 +258,7 @@
     <div class="sidebar" id="sidebar">
 
         <div class="logo">
-            <span class="logo-text">Warehouse IOT</span>
+            <span class="logo-text" style="font-weight: 800; margin-left: 10px;">Warehouse IOT</span>
 
             <button class="toggle-btn" id="toggleBtn">
                 ☰
@@ -253,61 +267,75 @@
 
         <ul class="menu">
 
-            <li>
-                <a href="{{ route('admin.dashboard') }}">
-                    <span class="icon">📊</span>
-                    <span class="menu-text">Dashboard</span>
-                </a>
-            </li>
+          <ul class="menu">
 
-            <li>
-                <a href="{{ route('regions.index') }}">
-                    <span class="icon">🌎</span>
-                    <span class="menu-text">Regions</span>
-                </a>
-            </li>
 
-            <li>
-                <a href="{{ route('hierarchy.index') }}">
-                    <span class="icon">🧩</span>
-                    <span class="menu-text">Hierarchy</span>
-                </a>
-            </li>
+<li>
+    <a href="{{ route('admin.dashboard') }}"
+       class="{{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
+        <span class="icon">📊</span>
+        <span class="menu-text">Dashboard</span>
+    </a>
+</li>
 
-            <li>
-                <a href="{{ route('warehouses.index') }}">
-                    <span class="icon">🏬</span>
-                    <span class="menu-text">Warehouses</span>
-                </a>
-            </li>
+<li>
+    <a href="{{ route('regions.index') }}"
+       class="{{ request()->routeIs('regions.*') ? 'active' : '' }}">
+        <span class="icon">🌎</span>
+        <span class="menu-text">Regions</span>
+    </a>
+</li>
 
-            <li>
-                <a href="{{ route('readings.index') }}">
-                    <span class="icon">📈</span>
-                    <span class="menu-text">Readings</span>
-                </a>
-            </li>
+<li>
+    <a href="{{ route('hierarchy.index') }}"
+       class="{{ request()->routeIs('hierarchy.*') ? 'active' : '' }}">
+        <span class="icon">🧩</span>
+        <span class="menu-text">Hierarchy</span>
+    </a>
+</li>
 
-            <li>
-                <a href="{{ route('devices.index') }}">
-                    <span class="icon">D</span>
-                    <span class="menu-text">Devices</span>
-                </a>
-            </li>
+<li>
+    <a href="{{ route('warehouses.index') }}"
+       class="{{ request()->routeIs('warehouses.*') ? 'active' : '' }}">
+        <span class="icon">🏬</span>
+        <span class="menu-text">Warehouses</span>
+    </a>
+</li>
 
-            <li>
-                <a href="{{ route('alerts.index') }}">
-                    <span class="icon">🚨</span>
-                    <span class="menu-text">Alerts</span>
-                </a>
-            </li>
+<li>
+    <a href="{{ route('readings.index') }}"
+       class="{{ request()->routeIs('readings.*') ? 'active' : '' }}">
+        <span class="icon">📈</span>
+        <span class="menu-text">Readings</span>
+    </a>
+</li>
 
-            <li>
-                <a href="{{ route('admin.settings') }}">
-                    <span class="icon">⚙️</span>
-                    <span class="menu-text">Settings</span>
-                </a>
-            </li>
+<li>
+    <a href="{{ route('devices.index') }}"
+       class="{{ request()->routeIs('devices.*') ? 'active' : '' }}">
+        <span class="icon">📟</span>
+        <span class="menu-text">Devices</span>
+    </a>
+</li>
+
+<li>
+    <a href="{{ route('alerts.index') }}"
+       class="{{ request()->routeIs('alerts.*') ? 'active' : '' }}">
+        <span class="icon">🚨</span>
+        <span class="menu-text">Alerts</span>
+    </a>
+</li>
+
+<li>
+    <a href="{{ route('admin.settings') }}"
+       class="{{ request()->routeIs('admin.settings') ? 'active' : '' }}">
+        <span class="icon">⚙️</span>
+        <span class="menu-text">Settings</span>
+    </a>
+</li>
+
+
+</ul>
 
         </ul>
 

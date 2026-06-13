@@ -1,114 +1,200 @@
+
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Admin Login</title>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warehouse IoT | Admin Login</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <style>
+
         *{
             margin:0;
             padding:0;
             box-sizing:border-box;
-            font-family:Arial, sans-serif;
         }
 
         body{
-            height:100vh;
+            min-height:100vh;
             display:flex;
             justify-content:center;
             align-items:center;
-            background:linear-gradient(135deg,#4f46e5,#7c3aed);
+            font-family:'Segoe UI',sans-serif;
+
+            background:
+            linear-gradient(rgba(8,18,37,.55),rgba(8,18,37,.55)),
+            url('https://res.cloudinary.com/dvc1vatxw/image/upload/v1781327758/ChatGPT_Image_Jun_13_2026_10_43_20_AM_q9jwkk.png');
+
+            background-size:cover;
+            background-position:center;
+            background-repeat:no-repeat;
         }
 
-        .login-box{
-            width:380px;
-            background:#fff;
-            padding:40px;
-            border-radius:15px;
-            box-shadow:0 15px 35px rgba(0,0,0,.2);
+        .login-card{
+            width:430px;
+            padding:45px;
+
+            background:rgba(255,255,255,.12);
+            border:1px solid rgba(255,255,255,.15);
+
+            backdrop-filter:blur(18px);
+            -webkit-backdrop-filter:blur(18px);
+
+            border-radius:25px;
+
+            box-shadow:
+            0 8px 32px rgba(0,0,0,.25);
         }
 
-        .login-box h2{
+        .logo{
             text-align:center;
-            margin-bottom:30px;
-            color:#333;
+            margin-bottom:35px;
         }
 
-        .input-group{
-            margin-bottom:20px;
-        }
-
-        .input-group label{
-            display:block;
+        .logo h1{
+            color:#fff;
+            font-size:38px;
+            font-weight:700;
             margin-bottom:8px;
-            color:#555;
         }
 
-        .input-group input{
-            width:100%;
-            padding:14px;
-            border:1px solid #ddd;
-            border-radius:8px;
-            outline:none;
+        .logo p{
+            color:rgba(255,255,255,.8);
+            margin-bottom:0;
         }
 
-        .input-group input:focus{
-            border-color:#4f46e5;
+        .form-label{
+            color:#fff;
+            font-weight:500;
+            margin-bottom:10px;
         }
 
-        button{
-            width:100%;
-            padding:14px;
+        .form-control{
+            height:55px;
+            border-radius:15px;
+
+            background:rgba(255,255,255,.08);
+            border:1px solid rgba(255,255,255,.15);
+
+            color:#fff;
+            padding-left:18px;
+        }
+
+        .form-control::placeholder{
+            color:rgba(255,255,255,.65);
+        }
+
+        .form-control:focus{
+            background:rgba(255,255,255,.15);
+            border-color:#3b82f6;
+            color:#fff;
+            box-shadow:none;
+        }
+
+        .btn-login{
+            height:55px;
             border:none;
-            background:#4f46e5;
+            border-radius:15px;
+
+            background:#2563eb;
             color:white;
-            border-radius:8px;
-            cursor:pointer;
+
             font-size:16px;
+            font-weight:600;
+
             transition:.3s;
         }
 
-        button:hover{
-            background:#4338ca;
+        .btn-login:hover{
+            background:#1d4ed8;
         }
 
-        .error{
-            color:red;
+        .footer-text{
             text-align:center;
-            margin-top:15px;
+            color:rgba(255,255,255,.75);
+            margin-top:20px;
+            font-size:14px;
         }
+
+        .alert{
+            border-radius:15px;
+        }
+
+        @media(max-width:576px){
+
+            .login-card{
+                width:95%;
+                padding:30px;
+            }
+
+            .logo h1{
+                font-size:30px;
+            }
+
+        }
+
     </style>
+
 </head>
 <body>
 
-<div class="login-box">
-    <h2>Admin Login</h2>
+<div class="login-card">
 
-    <form method="POST" action="{{ route('admin.login') }}">
+    <div class="logo">
+        <h1>Warehouse IoT</h1>
+        <p>Admin Login</p>
+    </div>
+
+    @if(session('error'))
+        <div class="alert alert-danger mb-4">
+            {{ session('error') }}
+        </div>
+    @endif
+
+    <form action="{{ route('admin.login') }}" method="POST">
+
         @csrf
 
-        <div class="input-group">
-            <label>Email</label>
-            <input type="email" name="email" placeholder="Enter Email" required>
+        <div class="mb-4">
+            <label class="form-label">
+                Email Address
+            </label>
+
+            <input
+                type="email"
+                name="email"
+                class="form-control"
+                placeholder="Enter your email"
+                required>
         </div>
 
-        <div class="input-group">
-            <label>Password</label>
-            <input type="password" name="password" placeholder="Enter Password" required>
+        <div class="mb-4">
+            <label class="form-label">
+                Password
+            </label>
+
+            <input
+                type="password"
+                name="password"
+                class="form-control"
+                placeholder="Enter your password"
+                required>
         </div>
 
-        <button type="submit">
-            Login
+        <button type="submit" class="btn btn-login w-100">
+            Sign In
         </button>
 
-        @if(session('error'))
-            <div class="error">
-                {{ session('error') }}
-            </div>
-        @endif
-
     </form>
+
+    <div class="footer-text">
+        Smart Warehouse Monitoring System
+    </div>
+
 </div>
 
 </body>
 </html>
+
