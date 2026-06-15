@@ -327,12 +327,21 @@
 </li>
 
 <li>
+    <a href="{{ route('reports.index') }}"
+       class="{{ request()->routeIs('admin.reports*') ? 'active' : '' }}">
+        <span class="icon">🧾</span>
+        <span class="menu-text">Reports</span>
+    </a>
+</li>
+
+<li>
     <a href="{{ route('admin.settings') }}"
        class="{{ request()->routeIs('admin.settings') ? 'active' : '' }}">
         <span class="icon">⚙️</span>
         <span class="menu-text">Settings</span>
     </a>
 </li>
+
 
 
 </ul>
@@ -374,6 +383,13 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/2.3.2/js/dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/2.3.2/js/dataTables.bootstrap5.min.js"></script>
+
+<!-- DataTables Buttons (for colvis) -->
+<link href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.bootstrap5.min.js"></script>
+
 
 <script>
     let sidebar = document.getElementById('sidebar');

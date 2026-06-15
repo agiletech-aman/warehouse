@@ -9,6 +9,7 @@ use App\Http\Controllers\RegionController;
 use App\Http\Controllers\WarehouseController;
 use App\Models\Reading;
 use App\Models\Region;
+use App\Http\Controllers\ReportController;
 
 
 Route::get('/', [AdminController::class, 'showLogin'])->name('admin.login');
@@ -31,6 +32,15 @@ Route::resource('warehouses', WarehouseController::class);
 Route::resource('devices', DeviceController::class);
 Route::resource('readings', ReadingController::class);
 Route::resource('alerts', AlertController::class);
+
+// Reports
+
+
+Route::get('/admin/reports', [ReportController::class, 'index'])->name('reports.index');
+Route::get('/admin/reports/data', [ReportController::class, 'data'])->name('reports.data');
+Route::get('/admin/reports/summary', [ReportController::class, 'summary'])->name('reports.summary');
+Route::get('/admin/reports/export/{format}', [ReportController::class, 'export'])->name('reports.export');
+
 
 Route::get('/hierarchy', function () {
     $latestDeviceReadings = Reading::query()
