@@ -69,20 +69,7 @@
                 @error('address')<div class="text-danger small">{{ $message }}</div>@enderror
             </div>
 
-            <div class="col-md-4 mb-3">
-                <label class="form-label">City</label>
-                <input type="text" name="city" class="form-control" value="{{ old('city') }}">
-            </div>
-
-            <div class="col-md-4 mb-3">
-                <label class="form-label">State</label>
-                <input type="text" name="state" class="form-control" value="{{ old('state') }}">
-            </div>
-
-            <div class="col-md-4 mb-3">
-                <label class="form-label">Country</label>
-                <input type="text" name="country" class="form-control" value="{{ old('country') }}">
-            </div>
+            
 
 
         </div>
