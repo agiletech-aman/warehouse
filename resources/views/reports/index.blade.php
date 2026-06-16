@@ -4,423 +4,787 @@
 
 @section('content')
 <div class="content-shell">
-    <div class="card border-0 shadow-sm p-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div>
-                <h3 class="mb-1">Reports</h3>
-                <p class="text-muted mb-0">Advanced filtering, analytics and export for all monitoring data.</p>
+
+    {{-- Main Card --}}
+    <div class="card border-0 shadow-sm rounded-4">
+
+        {{-- Header --}}
+        <div class="card-body border-bottom">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+
+                <div>
+                    <h3 class="fw-bold mb-1">Reports Dashboard</h3>
+                    <div class="text-muted small">
+                        Analytics, filters and export tools for warehouse monitoring.
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 flex-wrap">
+
+                    <a id="export_pdf"
+                        href="#"
+                        class="btn btn-outline-danger rounded-pill">
+                        <i class="bi bi-file-earmark-pdf"></i>
+                        PDF
+                    </a>
+
+                    <a id="export_excel"
+                        href="#"
+                        class="btn btn-outline-success rounded-pill">
+                        <i class="bi bi-file-earmark-excel"></i>
+                        Excel
+                    </a>
+
+                    <a id="export_csv"
+                        href="#"
+                        class="btn btn-outline-secondary rounded-pill">
+                        CSV
+                    </a>
+
+                    <button
+                        onclick="window.print()"
+                        class="btn btn-outline-dark rounded-pill">
+
+                        Print
+                    </button>
+
+                </div>
+
             </div>
         </div>
 
-        @if(session('success'))
-            <div class="alert alert-success rounded-3 shadow-sm">{{ session('success') }}</div>
-        @endif
+
+        {{-- Filters --}}
+        <div class="card-body border-bottom bg-light">
+
+            <form id="filtersForm">
+
+                <div class="row g-3">
+
+                    <div class="col-lg-2">
+                        <label class="form-label fw-semibold">
+                            From Date
+                        </label>
+
+                        <input
+                            type="date"
+                            class="form-control"
+                            id="from_date"
+                            name="from_date">
+                    </div>
 
 
-        {{-- Sticky Filters --}}
-        <div class="card border-0 shadow-sm p-3 mb-4" style="position: sticky; top: 84px; z-index: 10; background: rgba(255,255,255,.98);">
-            <form id="filtersForm" class="row g-3">
-                <div class="col-12 col-md-3">
-                    <label class="form-label">From Date</label>
-                    <input type="date" class="form-control" name="from_date" id="from_date" />
+                    <div class="col-lg-2">
+                        <label class="form-label fw-semibold">
+                            To Date
+                        </label>
+
+                        <input
+                            type="date"
+                            class="form-control"
+                            id="to_date"
+                            name="to_date">
+                    </div>
+
+
+                    <div class="col-lg-2">
+                        <label class="form-label fw-semibold">
+                            Region
+                        </label>
+
+                        <select
+                            id="region_code"
+                            name="region_code"
+                            class="form-select">
+
+                            <option value="">
+                                All Regions
+                            </option>
+
+                        </select>
+                    </div>
+
+
+                    <div class="col-lg-3">
+                        <label class="form-label fw-semibold">
+                            Warehouse
+                        </label>
+
+                        <select
+                            id="warehouse_code"
+                            name="warehouse_code"
+                            class="form-select"
+                            disabled>
+
+                            <option value="">
+                                Select Region First
+                            </option>
+
+                        </select>
+                    </div>
+
+
+                    <div class="col-lg-3">
+                        <label class="form-label fw-semibold">
+                            Device
+                        </label>
+
+                        <select
+                            id="device_code"
+                            name="device_code"
+                            class="form-select"
+                            disabled>
+
+                            <option value="">
+                                Select Warehouse First
+                            </option>
+
+                        </select>
+                    </div>
+
                 </div>
-                <div class="col-12 col-md-3">
-                    <label class="form-label">To Date</label>
-                    <input type="date" class="form-control" name="to_date" id="to_date" />
+
+
+                <div class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-2">
+
+                    <div id="colvisContainer"></div>
+
+                    <button
+                        type="button"
+                        id="btnReset"
+                        class="btn btn-outline-secondary rounded-pill">
+
+                        ↺ Reset Filters
+
+                    </button>
+
                 </div>
 
-                <div class="col-12 col-md-2">
-                    <label class="form-label">Region</label>
-                    <select class="form-select" name="region_code" id="region_code">
-                        <option value="">All Regions</option>
-                    </select>
-                </div>
-
-                <div class="col-12 col-md-2">
-                    <label class="form-label">Warehouse</label>
-                    <select class="form-select" name="warehouse_code" id="warehouse_code" disabled>
-                        <option value="">Select Region First</option>
-                    </select>
-                </div>
-
-                <div class="col-12 col-md-2">
-                    <label class="form-label">Device</label>
-                    <select class="form-select" name="device_code" id="device_code" disabled>
-                        <option value="">Select Warehouse First</option>
-                    </select>
-                </div>
-
-                <div class="col-12 col-md-2 d-none">
-                    <label class="form-label">Device Type</label>
-                    <select class="form-select" name="device_type" id="device_type">
-                        <option value="">All Types</option>
-                        <option value="co2">CO2</option>
-                        <option value="phosphorus">Phosphorus</option>
-                        <option value="humidity">Humidity</option>
-                        <option value="temperature">Temperature</option>
-                    </select>
-                </div>
-
-                <div class="col-12 col-md-2 d-none">
-                    <label class="form-label">Status</label>
-                    <select class="form-select" name="status" id="status">
-                        <option value="">All</option>
-                        <option value="online">Online</option>
-                        <option value="offline">Offline</option>
-                    </select>
-                </div>
-
-                <div class="col-12 col-md-2 d-none">
-                    <label class="form-label">Level</label>
-                    <select class="form-select" name="level" id="level">
-                        <option value="">All</option>
-                        <option value="normal">Normal</option>
-                        <option value="severe">Severe</option>
-                        <option value="critical">Critical</option>
-                    </select>
-                </div>
-
-
-                <div class="col-12 col-md-3" style="display:none;">
-                    <label class="form-label">Report Type</label>
-                    <select class="form-select" name="report_type" id="report_type" aria-hidden="true" tabindex="-1">
-                        <option value="reading" selected>Reading Report</option>
-                        <option value="alert">Alert Report</option>
-                        <option value="severe_alert">Severe Alert Report</option>
-                        <option value="critical_alert">Critical Alert Report</option>
-                        <option value="offline_device">Offline Device Report</option>
-                    </select>
-                </div>
-
-
-                <div class="col-12 col-md-2 d-flex align-items-end">
-                    <button type="button" class="btn btn-primary w-100" id="btnGenerate">Generate</button>
-                </div>
             </form>
+
         </div>
 
-        {{-- Statistics Cards --}}
-        <div class="row g-3 mb-4" id="statsRow">
-            <div class="col-6 col-md-3"><div class="card"><div class="text-muted">Total Readings</div><div class="h4 mb-0" id="stat_total_readings">0</div></div></div>
-            <div class="col-6 col-md-3"><div class="card"><div class="text-muted">Total Devices</div><div class="h4 mb-0" id="stat_total_devices">0</div></div></div>
-            <div class="col-6 col-md-3"><div class="card"><div class="text-muted">Online Devices</div><div class="h4 mb-0" id="stat_online_devices">0</div></div></div>
-            <div class="col-6 col-md-3"><div class="card"><div class="text-muted">Offline Devices</div><div class="h4 mb-0" id="stat_offline_devices">0</div></div></div>
 
-            <div class="col-6 col-md-3"><div class="card"><div class="text-muted">Severe Alerts</div><div class="h4 mb-0" id="stat_severe_alerts">0</div></div></div>
-            <div class="col-6 col-md-3"><div class="card"><div class="text-muted">Critical Alerts</div><div class="h4 mb-0" id="stat_critical_alerts">0</div></div></div>
-            <div class="col-6 col-md-3"><div class="card"><div class="text-muted">Regions Count</div><div class="h4 mb-0" id="stat_regions_count">0</div></div></div>
-            <div class="col-6 col-md-3"><div class="card"><div class="text-muted">Warehouses Count</div><div class="h4 mb-0" id="stat_warehouses_count">0</div></div></div>
+        {{-- Statistics --}}
+        <div class="card-body">
+
+            <div class="row g-3">
+
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="text-muted small">
+                                Total Readings
+                            </div>
+
+                            <h3 id="stat_total_readings">
+                                0
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="text-muted small">
+                                Total Devices
+                            </div>
+
+                            <h3 id="stat_total_devices">
+                                0
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="text-muted small">
+                                Online Devices
+                            </div>
+
+                            <h3 id="stat_online_devices">
+                                0
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-body">
+                            <div class="text-muted small">
+                                Offline Devices
+                            </div>
+
+                            <h3 id="stat_offline_devices">
+                                0
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
         </div>
 
-        {{-- Export Buttons --}}
-        <div class="d-flex flex-wrap gap-2 mb-3">
-            <a class="btn btn-outline-primary btn-sm rounded-pill" id="export_pdf" href="#">Export PDF</a>
-            <a class="btn btn-outline-success btn-sm rounded-pill" id="export_excel" href="#">Export Excel</a>
-            <a class="btn btn-outline-secondary btn-sm rounded-pill" id="export_csv" href="#">Export CSV</a>
-            <button class="btn btn-outline-dark btn-sm rounded-pill" onclick="window.print()">Print Report</button>
+
+        {{-- Table Section --}}
+        <div class="card-body pt-0">
+
+            <div class="table-responsive">
+
+                <table id="reportsTable"
+                    class="table table-hover align-middle mb-0">
+
+                    <thead class="table-light">
+
+                        <tr>
+
+                            <th>Date & Time</th>
+
+                            <th>Region</th>
+
+                            <th>Region Code</th>
+
+                            <th>Warehouse</th>
+
+                            <th>Warehouse Code</th>
+
+                            <th>Device Name</th>
+
+                            <th>Device Code</th>
+
+                            <th>Type</th>
+
+                            <th>IP Address</th>
+
+                            <th>Value</th>
+
+                            <th>Unit</th>
+
+                            <th>Level</th>
+
+                            <th>Status</th>
+
+                        </tr>
+
+                    </thead>
+
+                    <tbody></tbody>
+
+                </table>
+
+            </div>
+
         </div>
-
-        <div class="table-responsive">
-            <table id="reportsTable" class="table table-hover align-middle mb-0">
-                <thead>
-                <tr>
-                    <th>Date & Time</th>
-                    <th>Region</th>
-                    <th>Region Code</th>
-                    <th>Warehouse</th>
-                    <th>Warehouse Code</th>
-                    <th>Device Name</th>
-                    <th>Device Code / Sensor Device ID</th>
-                    <th>Device Type</th>
-                    <th>Device IP</th>
-                    <th>Value</th>
-                    <th>Unit</th>
-                    <th>Level</th>
-                    <th>Status</th>
-                </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-
-        <div class="mt-3 text-muted" id="tableInfo"></div>
-
 
     </div>
 </div>
 @endsection
 
+
 @section('styles')
+
 <style>
-    .badge.bg-severe { background-color:#f59e0b !important; }
+    .table th {
+        white-space: nowrap;
+        font-size: 14px;
+        font-weight: 600;
+    }
 
-    /* DataTables button container spacing */
-    #reportsTable_wrapper .dt-buttons { margin-bottom: 10px; }
+    .table td {
+        vertical-align: middle;
+    }
 
-    /* Sticky filter visuals */
-    #filtersForm label { font-weight: 600; font-size: 12px; color: #4b5563; }
+    .card {
+        border-radius: 18px;
+    }
 
-    .table th { white-space: nowrap; }
+    #filtersForm label {
+        font-size: 13px;
+    }
+
+    .badge.bg-severe {
+        background: #f59e0b !important;
+    }
+
+    #reportsTable_wrapper .dt-buttons {
+        margin-bottom: 0;
+    }
+
+    #colvisContainer .dt-button {
+        border-radius: 50rem !important;
+    }
+
+    .dt-button-collection {
+        min-width: 260px !important;
+        left: auto !important;
+        right: 0 !important;
+    }
+
+    .dt-button-collection .dt-button {
+        width: 100%;
+        text-align: left;
+    }
+
+    div.dt-processing {
+        background: white;
+    }
 </style>
+
 @endsection
+
 
 @section('scripts')
 <script>
-
     const API = {
-        regions: '{{ url('/api/regions') }}',
-        warehouses: '{{ url('/api/warehouses') }}',
-        devices: '{{ url('/api/devices') }}',
+        regions: '{{ url("/api/regions") }}',
+        warehouses: '{{ url("/api/warehouses") }}',
+        devices: '{{ url("/api/devices") }}',
     };
 
-    const routeExportPdf = '{{ route("reports.export", ["format" => "pdf"]) }}';
-    const routeExportExcel = '{{ route("reports.export", ["format" => "excel"]) }}';
-    const routeExportCsv = '{{ route("reports.export", ["format" => "csv"]) }}';
+    const routeExportPdf = '{{ route("reports.export",["format"=>"pdf"]) }}';
+    const routeExportExcel = '{{ route("reports.export",["format"=>"excel"]) }}';
+    const routeExportCsv = '{{ route("reports.export",["format"=>"csv"]) }}';
+
+    let table = null;
 
 
+    /* ---------------- FILTERS ---------------- */
 
     function getFilters() {
+
         const form = document.getElementById('filtersForm');
         const data = new FormData(form);
+
         const params = new URLSearchParams();
+
         for (const [k, v] of data.entries()) {
-            if (v !== null && v !== '') params.set(k, v);
+            if (v !== '') {
+                params.set(k, v);
+            }
         }
+
         return params;
     }
 
+    function buildExportLinks() {
+
+        const query = getFilters().toString();
+
+        document.getElementById('export_pdf').href =
+            routeExportPdf + '?' + query;
+
+        document.getElementById('export_excel').href =
+            routeExportExcel + '?' + query;
+
+        document.getElementById('export_csv').href =
+            routeExportCsv + '?' + query;
+    }
+
+
+    /* ---------------- REGIONS ---------------- */
+
     async function loadRegions() {
-        const res = await fetch(API.regions + '?per_page=1000');
-        const json = await res.json();
-        const sel = document.getElementById('region_code');
-        sel.innerHTML = '<option value="">All Regions</option>';
-        (json.data?.data || json.data || []).forEach(r => {
-            const code = r.region_code ? r.region_code : (r.region_name || '');
 
-            if (!code) return;
-            const opt = document.createElement('option');
-            opt.value = code;
-            opt.textContent = r.region_name ? ('' + r.region_name) : code;
-            sel.appendChild(opt);
+        const response = await fetch(
+            API.regions + '?per_page=1000'
+        );
+
+        const json = await response.json();
+
+        const select = document.getElementById('region_code');
+
+        select.innerHTML =
+            '<option value="">All Regions</option>';
+
+        (json.data?.data || json.data || []).forEach(region => {
+
+            const option = document.createElement('option');
+
+            option.value = region.region_code;
+
+            option.textContent =
+                region.region_name;
+
+            select.appendChild(option);
+
         });
     }
 
 
-    async function loadWarehouses(region_code) {
-        const sel = document.getElementById('warehouse_code');
-        sel.disabled = true;
-        sel.innerHTML = '<option value="">Loading...</option>';
-        const res = await fetch(API.warehouses + '?per_page=1000&region_code=' + encodeURIComponent(region_code));
-        const json = await res.json();
-        sel.innerHTML = '<option value="">All Warehouses</option>';
+    /* ---------------- WAREHOUSE ---------------- */
+
+    async function loadWarehouses(regionCode) {
+
+        const select =
+            document.getElementById('warehouse_code');
+
+        select.disabled = true;
+
+        select.innerHTML =
+            '<option>Loading...</option>';
+
+        const response = await fetch(
+            API.warehouses +
+            '?per_page=1000&region_code=' +
+            encodeURIComponent(regionCode)
+        );
+
+        const json = await response.json();
+
+        select.innerHTML =
+            '<option value="">All Warehouses</option>';
+
         (json.data?.data || json.data || []).forEach(w => {
-            const opt = document.createElement('option');
-            opt.value = w.warehouse_code;
-            opt.textContent = w.warehouse_name ? w.warehouse_name : w.warehouse_code;
-            sel.appendChild(opt);
+
+            select.innerHTML +=
+                `<option value="${w.warehouse_code}">
+                ${w.warehouse_name}
+             </option>`;
         });
-        sel.disabled = false;
+
+        select.disabled = false;
     }
 
-    async function loadDevices(warehouse_code) {
-        const sel = document.getElementById('device_code');
-        sel.disabled = true;
-        sel.innerHTML = '<option value="">Loading...</option>';
 
-        // Device API supports warehouse_code filter via whereHas warehouse.
-        const res = await fetch(API.devices + '?per_page=1000&warehouse_code=' + encodeURIComponent(warehouse_code));
-        const json = await res.json();
-        sel.innerHTML = '<option value="">All Devices</option>';
-        (json.data?.data || json.data || []).forEach(d => {
-            const code = d.device_code || d.device_code === '' ? d.device_code : (d.device_code || d.ip_address || '');
-            const sensorId = d.device_code ?? d.device_code;
-            const opt = document.createElement('option');
-            opt.value = sensorId || d.device_code || '';
-            opt.textContent = d.device_name ? `${d.device_name} (${sensorId})` : sensorId;
-            if (opt.value) sel.appendChild(opt);
+    /* ---------------- DEVICES ---------------- */
+
+    async function loadDevices(warehouseCode) {
+
+        const select =
+            document.getElementById('device_code');
+
+        select.disabled = true;
+
+        select.innerHTML =
+            '<option>Loading...</option>';
+
+        const response = await fetch(
+            API.devices +
+            '?per_page=1000&warehouse_code=' +
+            encodeURIComponent(warehouseCode)
+        );
+
+        const json = await response.json();
+
+        select.innerHTML =
+            '<option value="">All Devices</option>';
+
+        (json.data?.data || json.data || []).forEach(device => {
+
+            let code =
+                device.device_code ||
+                device.ip_address;
+
+            select.innerHTML +=
+                `<option value="${code}">
+                ${device.device_name}
+            </option>`;
         });
-        sel.disabled = false;
+
+        select.disabled = false;
     }
 
-    // Charts were removed from the Reports page. Keep this as a no-op.
-    function renderCharts(payload) {
-        // no-op
-    }
 
+    /* ---------------- SUMMARY ---------------- */
 
     async function refreshSummary() {
-        const params = getFilters();
 
-        const res = await fetch('{{ url('/admin/reports/summary') }}?' + params.toString());
-        const payload = await res.json();
+        const response = await fetch(
+            '{{ url("/admin/reports/summary") }}?' +
+            getFilters()
+        );
+
+        const payload = await response.json();
+
         if (!payload.success) return;
 
-        document.getElementById('stat_total_readings').textContent = payload.stats.total_readings;
-        document.getElementById('stat_total_devices').textContent = payload.stats.total_devices;
-        document.getElementById('stat_online_devices').textContent = payload.stats.online_devices;
-        document.getElementById('stat_offline_devices').textContent = payload.stats.offline_devices;
-        document.getElementById('stat_severe_alerts').textContent = payload.stats.severe_alerts;
-        document.getElementById('stat_critical_alerts').textContent = payload.stats.critical_alerts;
-        document.getElementById('stat_regions_count').textContent = payload.stats.regions_count;
-        document.getElementById('stat_warehouses_count').textContent = payload.stats.warehouses_count;
+        document.getElementById('stat_total_readings').innerHTML =
+            payload.stats.total_readings || 0;
 
-        renderCharts(payload);
+        document.getElementById('stat_total_devices').innerHTML =
+            payload.stats.total_devices || 0;
+
+        document.getElementById('stat_online_devices').innerHTML =
+            payload.stats.online_devices || 0;
+
+        document.getElementById('stat_offline_devices').innerHTML =
+            payload.stats.offline_devices || 0;
+
+        document.getElementById('stat_severe_alerts').innerHTML =
+            payload.stats.severe_alerts || 0;
+
+        document.getElementById('stat_critical_alerts').innerHTML =
+            payload.stats.critical_alerts || 0;
+
+        document.getElementById('stat_regions_count').innerHTML =
+            payload.stats.regions_count || 0;
+
+        document.getElementById('stat_warehouses_count').innerHTML =
+            payload.stats.warehouses_count || 0;
     }
 
-    function buildExportLink(baseRoute) {
-        const params = getFilters();
-        return baseRoute + '?' + params.toString();
-    }
 
-    let table;
+    /* ---------------- TABLE ---------------- */
 
     function initTable() {
-        if (table) return;
 
         table = new DataTable('#reportsTable', {
-            dom: 'Bfrtip',
-            autoWidth: false,
 
-            buttons: [
-                {
-                    extend: 'colvis',
-                    text: 'Choose Columns',
-                    collectionLayout: 'fixed two-column',
-                    columns: ':visible'
-                }
-            ],
-
-
-            responsive: true,
-            searching: true,
-            pageLength: 10,
             processing: true,
             serverSide: true,
+            scrollX: true,
+            pageLength: 15,
+
+            dom: '<"top"B>rt<"bottom d-flex justify-content-between align-items-center"ip>',
+
+            buttons: [{
+                extend: 'colvis',
+                text: 'Choose Columns',
+                className: 'btn btn-secondary rounded-pill'
+            }],
+
             ajax: {
-                url: '{{ url('/admin/reports/data') }}',
-                type: 'GET',
+                url: '{{ url("/admin/reports/data") }}',
+
                 data: function(d) {
+
                     const params = getFilters();
+
                     for (const [k, v] of params.entries()) {
                         d[k] = v;
                     }
+
                 }
             },
-            columns: [
-                { data: 'date_time' },
-                { data: 'region' },
-                { data: 'region_code' },
-                { data: 'warehouse' },
-                { data: 'warehouse_code' },
-                { data: 'device_name' },
-                { data: 'device_code' },
-                { data: 'device_type' },
-                { data: 'device_ip' },
-                { data: 'value' },
-                { data: 'unit' },
+
+            columns: [{
+                    data: 'date_time',
+                    defaultContent: ''
+                },
+                {
+                    data: 'region',
+                    defaultContent: ''
+                },
+                {
+                    data: 'region_code',
+                    defaultContent: ''
+                },
+                {
+                    data: 'warehouse',
+                    defaultContent: ''
+                },
+                {
+                    data: 'warehouse_code',
+                    defaultContent: ''
+                },
+                {
+                    data: 'device_name',
+                    defaultContent: ''
+                },
+                {
+                    data: 'device_code',
+                    defaultContent: ''
+                },
+                {
+                    data: 'device_type',
+                    defaultContent: ''
+                },
+                {
+                    data: 'device_ip',
+                    defaultContent: ''
+                },
+                {
+                    data: 'value',
+                    defaultContent: ''
+                },
+                {
+                    data: 'unit',
+                    defaultContent: ''
+                },
+
                 {
                     data: 'level',
-                    render: function(d, type, row) {
+                    defaultContent: '',
+                    render: function(d) {
+
                         if (!d) return '-';
+
                         let cls = 'bg-success';
-                        let label = (d === 'normal') ? 'Normal' : (d === 'severe' ? 'Severe' : (d === 'critical' ? 'Critical' : d));
-                        if (d === 'severe') cls = 'bg-severe text-dark';
-                        if (d === 'critical') cls = 'bg-danger';
-                        return '<span class="badge ' + cls + '">' + label + '</span>';
+
+                        if (d === 'severe')
+                            cls = 'bg-warning text-dark';
+
+                        if (d === 'critical')
+                            cls = 'bg-danger';
+
+                        return `<span class="badge ${cls}">
+                        ${d}
+                    </span>`;
                     }
                 },
+
                 {
                     data: 'status',
+                    defaultContent: '',
                     render: function(d) {
-                        if (!d) d = 'offline';
-                        if (d === 'online') return '<span class="badge bg-success">Online</span>';
-                        if (d === 'offline') return '<span class="badge bg-secondary">Offline</span>';
-                        return '<span class="badge bg-light text-dark">' + d + '</span>';
+
+                        if (d === 'online')
+                            return '<span class="badge bg-success">Online</span>';
+
+                        if (d === 'offline')
+                            return '<span class="badge bg-secondary">Offline</span>';
+
+                        return d ?? '-';
                     }
-                },
+                }
             ],
-            language: {
-                search: 'Search reports:',
-                lengthMenu: 'Show _MENU_ entries'
-            },
-            order: [[0, 'desc']]
+
+            order: [
+                [0, 'desc']
+            ]
         });
+
+        table.buttons()
+            .container()
+            .appendTo('#colvisContainer');
     }
 
-    document.addEventListener('DOMContentLoaded', async function() {
-        await loadRegions();
 
-        initTable();
+    /* ---------------- REFRESH ---------------- */
+
+    function reloadTable() {
+
+        buildExportLinks();
+
         refreshSummary();
 
-        document.getElementById('region_code').addEventListener('change', async (e) => {
-            const v = e.target.value;
-            document.getElementById('warehouse_code').value = '';
-            document.getElementById('device_code').value = '';
-            if (!v) {
-                const selW = document.getElementById('warehouse_code');
-                selW.disabled = true;
-                selW.innerHTML = '<option value="">Select Region First</option>';
-                return;
-            }
-            await loadWarehouses(v);
-        });
+        table.ajax.reload();
+    }
 
-        document.getElementById('warehouse_code').addEventListener('change', async (e) => {
-            const v = e.target.value;
-            document.getElementById('device_code').value = '';
-            if (!v) {
-                const selD = document.getElementById('device_code');
-                selD.disabled = true;
-                selD.innerHTML = '<option value="">Select Warehouse First</option>';
-                return;
-            }
-            await loadDevices(v);
-        });
 
-        document.getElementById('btnGenerate').addEventListener('click', async () => {
-            // Open DataTables ColVis (Choose Columns) immediately on Generate click
-            try {
-                const colvisButton = document.querySelector('#reportsTable_wrapper .dt-buttons button.dt-button');
-                if (colvisButton) colvisButton.click();
-            } catch (e) {}
+    /* ---------------- DEBOUNCE ---------------- */
 
-            // Update export links (export will use the currently selected visible columns from colvis)
-            // Persist selected columns into hidden inputs so backend export can read them.
-            try {
-                const visibleIdx = [];
-                table.columns().every(function(idx) {
-                    if (this.visible()) visibleIdx.push(idx);
-                });
+    function debounce(func, delay) {
 
-                // Map idx -> column key (must match backend mapping order)
-                const colKeys = [
-                    'date_time','region','region_code','warehouse','warehouse_code',
-                    'device_name','device_code','device_type','device_ip','value','unit','level','status'
-                ];
-                const selected = visibleIdx.map(i => colKeys[i]).filter(Boolean);
+        let timer;
 
-                let hidden = document.getElementById('selected_cols');
-                if (!hidden) {
-                    hidden = document.createElement('input');
-                    hidden.type = 'hidden';
-                    hidden.id = 'selected_cols';
-                    hidden.name = 'selected_cols';
-                    document.getElementById('filtersForm').appendChild(hidden);
+        return function() {
+
+            clearTimeout(timer);
+
+            timer = setTimeout(
+                () => func(),
+                delay
+            );
+        };
+    }
+
+    const autoRefresh =
+        debounce(reloadTable, 500);
+
+
+    /* ---------------- EVENTS ---------------- */
+
+    function setupFilters() {
+
+        document
+            .querySelectorAll(
+                '#filtersForm input,#filtersForm select'
+            )
+            .forEach(el => {
+
+                el.addEventListener(
+                    'change',
+                    autoRefresh
+                );
+
+            });
+    }
+
+
+    function setupDropdowns() {
+
+        document
+            .getElementById('region_code')
+            .addEventListener(
+                'change',
+                async e => {
+
+                    let value = e.target.value;
+
+                    if (!value) return;
+
+                    await loadWarehouses(value);
+
+                    autoRefresh();
+
                 }
-                hidden.value = selected.join(',');
-            } catch (e) {}
+            );
 
 
-            document.getElementById('export_pdf').href = buildExportLink(routeExportPdf);
-            document.getElementById('export_excel').href = buildExportLink(routeExportExcel);
-            document.getElementById('export_csv').href = buildExportLink(routeExportCsv);
+        document
+            .getElementById('warehouse_code')
+            .addEventListener(
+                'change',
+                async e => {
 
-            await refreshSummary();
-            table.ajax.reload();
-        });
+                    let value = e.target.value;
 
-    });
+                    if (!value) return;
+
+                    await loadDevices(value);
+
+                    autoRefresh();
+
+                }
+            );
+
+    }
+
+
+    function setupResetButton() {
+
+        document
+            .getElementById('btnReset')
+            .addEventListener('click', () => {
+
+                document
+                    .getElementById('filtersForm')
+                    .reset();
+
+                autoRefresh();
+
+            });
+
+    }
+
+
+    /* ---------------- INIT ---------------- */
+
+    document.addEventListener(
+        'DOMContentLoaded',
+        async function() {
+
+            await loadRegions();
+
+            initTable();
+
+            refreshSummary();
+
+            buildExportLinks();
+
+            setupFilters();
+
+            setupDropdowns();
+
+            setupResetButton();
+
+        }
+    );
 </script>
 @endsection
-

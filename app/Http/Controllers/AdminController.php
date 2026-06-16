@@ -36,7 +36,7 @@ class AdminController extends Controller
         session([
             'admin_id'   => $admin->id,
             'admin_name' => $admin->name,
-            'admin_email'=> $admin->email,
+            'admin_email' => $admin->email,
         ]);
 
         return redirect()->route('admin.dashboard');
@@ -127,7 +127,70 @@ class AdminController extends Controller
             return redirect()->route('admin.login');
         }
 
-        return view('admin.settings');
+        $routing = \App\Models\EmailRouting::all()
+            ->keyBy(fn($r) => $r->device_type . '_' . $r->level);
+
+        $ccEmails = \App\Models\CcEmail::orderBy('email')->get();
+
+        return view('admin.settings', compact('routing', 'ccEmails'));
+    }
+
+    public function storeCcEmail(Request $request)
+    {
+        if (!session()->has('admin_id')) {
+            return redirect()->route('admin.login');
+        }
+
+        $request->validate([
+            'email' => 'required|email|unique:cc_emails,email',
+        ]);
+
+        \App\Models\CcEmail::create([
+            'email'  => $request->email,
+            'status' => $request->boolean('status', true),
+        ]);
+
+        return back()->with('success', 'CC email added successfully.');
+    }
+
+    public function updateCcEmail(Request $request, $id)
+    {
+        if (!session()->has('admin_id')) {
+            return redirect()->route('admin.login');
+        }
+
+        $cc = \App\Models\CcEmail::findOrFail($id);
+
+        $request->validate([
+            'email' => 'required|email|unique:cc_emails,email,' . $cc->id,
+        ]);
+
+        $cc->update(['email' => $request->email]);
+
+        return back()->with('success', 'CC email updated successfully.');
+    }
+
+    public function destroyCcEmail($id)
+    {
+        if (!session()->has('admin_id')) {
+            return redirect()->route('admin.login');
+        }
+
+        \App\Models\CcEmail::findOrFail($id)->delete();
+
+        return back()->with('success', 'CC email deleted successfully.');
+    }
+
+    public function toggleCcEmail($id)
+    {
+        if (!session()->has('admin_id')) {
+            return redirect()->route('admin.login');
+        }
+
+        $cc = \App\Models\CcEmail::findOrFail($id);
+        $cc->update(['status' => !$cc->status]);
+
+        return back()->with('success', 'CC email status updated.');
     }
 
     public function changePassword(Request $request)

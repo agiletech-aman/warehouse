@@ -40,7 +40,12 @@ Route::get('/admin/reports', [ReportController::class, 'index'])->name('reports.
 Route::get('/admin/reports/data', [ReportController::class, 'data'])->name('reports.data');
 Route::get('/admin/reports/summary', [ReportController::class, 'summary'])->name('reports.summary');
 Route::get('/admin/reports/export/{format}', [ReportController::class, 'export'])->name('reports.export');
-
+Route::get('/admin/settings/email-routing', [App\Http\Controllers\EmailRoutingController::class, 'index'])->name('settings.email-routing');
+Route::post('/admin/settings/email-routing', [App\Http\Controllers\EmailRoutingController::class, 'update'])->name('settings.email-routing.update');
+Route::post('/settings/cc-emails', [AdminController::class, 'storeCcEmail'])->name('settings.cc-emails.store');
+Route::put('/settings/cc-emails/{id}', [AdminController::class, 'updateCcEmail'])->name('settings.cc-emails.update');
+Route::delete('/settings/cc-emails/{id}', [AdminController::class, 'destroyCcEmail'])->name('settings.cc-emails.destroy');
+Route::post('/settings/cc-emails/{id}/toggle', [AdminController::class, 'toggleCcEmail'])->name('settings.cc-emails.toggle');
 
 Route::get('/hierarchy', function () {
     $latestDeviceReadings = Reading::query()
@@ -76,7 +81,7 @@ Route::get('/hierarchy', function () {
                     return (object) [
                         'warehouse_code' => $warehouse->warehouse_code ?: '-',
                         'warehouse_name' => $warehouse->warehouse_name ?: 'Unknown Warehouse',
-                        'manager_name' => $warehouse->manager_name,
+                        'manager_name' => $warehouse->manager_name ?? null,
                         'status' => $warehouse->status,
                         'devices_count' => $devices->count(),
                         'devices' => $devices,
@@ -106,6 +111,7 @@ Route::get('/hierarchy', function () {
             return (object) [
                 'region_code' => $region->region_code ?: '-',
                 'region_name' => $region->region_name ?: 'Unknown Region',
+                'manager_name' => $region->manager_name ?? null,
                 'status' => $region->status,
                 'warehouses_count' => $warehouses->count(),
                 'warehouses' => $warehouses,

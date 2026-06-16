@@ -19,8 +19,3 @@ Route::get('/devices', [DeviceController::class, 'index']);
 
 // Alerts: active alerts count + all alerts
 Route::get('/alerts', [AlertController::class, 'index']);
-
-
-
-
-

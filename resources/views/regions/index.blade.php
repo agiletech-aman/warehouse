@@ -36,8 +36,8 @@
 <tr>
     <th>Code</th>
     <th>Name</th>
+    <th>Manager</th>
     <th>Status</th>
-
     <th>Action</th>
 </tr>
 
@@ -53,9 +53,17 @@
 
 <td>{{ $region->region_name }}</td>
 
+<td>
+    {{ $region->manager_name ?? '-' }}
+    @if(!empty($region->manager_phone))
+        <small class="text-muted d-block">{{ $region->manager_phone }}</small>
+    @endif
+    @if(!empty($region->manager_email))
+        <small class="text-muted d-block">{{ $region->manager_email }}</small>
+    @endif
+</td>
 
 <td>
-
 
 @if($region->status=='active')
 <span class="badge bg-success">Active</span>

@@ -183,7 +183,7 @@
                                         {{ $region->region_name }}
                                     </div>
                                     <div class="hierarchy-subtitle">
-                                        Code: {{ $region->region_code }}
+                                        Code: {{ $region->region_code }} | Manager: {{ $region->manager_name ?? '-' }}
                                     </div>
                                 </div>
 
@@ -213,7 +213,7 @@
                                                     {{ $warehouse->warehouse_name }}
                                                 </div>
                                                 <div class="hierarchy-subtitle">
-                                                    Code: {{ $warehouse->warehouse_code }} | Manager: {{ $warehouse->manager_name ?: '-' }}
+                                                    Code: {{ $warehouse->warehouse_code }} | Manager: {{ $warehouse->manager_name ?? '-' }}
                                                 </div>
                                             </div>
 

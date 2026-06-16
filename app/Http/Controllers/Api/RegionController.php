@@ -48,18 +48,38 @@ class RegionController extends Controller
                         'created_at',
                         'updated_at',
                     ]);
-                }
-            ])->select(['id', 'region_code', 'region_name', 'status', 'created_at', 'updated_at']);
+                },
+            ])->select([
+                'id',
+                'region_code',
+                'region_name',
+                'manager_name',
+                'manager_email',
+                'manager_phone',
+                'status',
+                'created_at',
+                'updated_at',
+            ]);
         } else {
-            $query->select(['id', 'region_code', 'region_name', 'status', 'created_at', 'updated_at']);
+            $query->select([
+                'id',
+                'region_code',
+                'region_name',
+                'manager_name',
+                'manager_email',
+                'manager_phone',
+                'status',
+                'created_at',
+                'updated_at',
+            ]);
         }
 
         $regions = $query->paginate($perPage);
 
-$activeCount = Region::where('status', 'active')->count();
+        $activeCount = Region::where('status', 'active')->count();
         $inactiveCount = Region::where('status', 'inactive')->count();
 
-return response()->json([
+        return response()->json([
             'success' => true,
             'message' => 'Regions fetched successfully',
             'count' => $regions->total(),

@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use App\Models\EmailRouting;
+use App\Models\CcEmail;
 
 
 class ReadingController extends Controller
@@ -174,719 +176,330 @@ class ReadingController extends Controller
         ]);
     }
 
-//     public function store(Request $request)
-//     {
-
-//         $rows = [];
-
-//         foreach ($request->readings as $reading) {
-//             $row = [
-//                 'key' => $request->key,
-
-//                 // Store IoT sensor identifier directly as string (NOT FK).
-//                 // Your payload uses device_id like: CO2_<ip>_<port>_<godown>.
-//                 'sensor_device_id' => $reading['device_id'] ?? null,
-
-//                 // FK is nullable now (migration added). Keep it NULL by default.
-//                 'device_id' => null,
-
-//                 'device_name' => $reading['device_name'] ?? null,
-//                 'device_type' => $reading['device_type'] ?? null,
-//                 'device_ip' => $reading['device_ip'] ?? null,
-
-//                 'unit' => $reading['unit'] ?? null,
-//                 'port' => $reading['port'] ?? null,
-
-//                 'region' => $reading['region'] ?? null,
-//                 'region_code' => $reading['region_code'] ?? null,
-
-//                 'warehouse' => $reading['warehouse'] ?? null,
-//                 'warehouse_code' => $reading['warehouse_code'] ?? null,
-
-//                 'godown' => $reading['godown'] ?? null,
-//                 'compartment' => $reading['compartment'] ?? null,
-
-//                 'reading_value' => $reading['value'] ?? null,
-
-//                 // level: normal/severe/critical
-//                 'level' => strtolower($reading['level'] ?? 'normal'),
-
-//                 // status: online/offline
-//                 'status' => strtolower($reading['status'] ?? 'online'),
-
-//                 'recorded_at' => $reading['recorded_at'] ?? now(),
-//             ];
-
-//             $createdReading = Reading::create($row);
-//             $row['reading_id'] = $createdReading->id;
-
-//             $rows[] = $row;
-//         }
-
-//         // Throttled alerting (email every 1 hour max per device+type)
-//         // Also closes alert when status becomes normal.
-//         $totalAlertsCreated = 0;
-//         $totalAlertsClosed = 0;
-//         $totalAlertAttempts = 0;
-//         $alertEmailsSent = 0;
-
-//         // IoT device resolution helpers
-//         $resolveDeviceId = function (?string $sensorDeviceId, ?string $sensorIp, $sensorPort) {
-//             if (!$sensorDeviceId) {
-//                 return null;
-//             }
-
-//             // 0) If payload sends actual device id (numeric)
-//             if (is_numeric($sensorDeviceId)) {
-//                 $byId = Device::where('id', (int) $sensorDeviceId)->first();
-//                 if ($byId) {
-//                     return $byId->id;
-//                 }
-//             }
-
-//             // 1) Exact match by device_code
-//             $byCode = Device::where('device_code', $sensorDeviceId)->first();
-//             if ($byCode) {
-//                 return $byCode->id;
-//             }
-
-//             // 2) Parse CO2_<ip>_<port>_<godown>
-//             if (str_contains($sensorDeviceId, '_')) {
-//                 $parts = explode('_', $sensorDeviceId);
-//                 // [type, ip, port, godown...]
-//                 $parsedIp = $parts[1] ?? null;
-//                 $parsedPort = $parts[2] ?? null;
-
-//                 $lookupIp = $sensorIp ?: $parsedIp;
-//                 $lookupPort = $sensorPort ?: $parsedPort;
-
-//                 if ($lookupIp) {
-//                     // devices table stores IP in ip_address (no device_ip / port columns)
-//                     $byIp = Device::where('ip_address', $lookupIp)->first();
-//                     if ($byIp) {
-//                         return $byIp->id;
-//                     }
-//                 }
-//             }
-
-//             return null;
-//         };
-
-//         $resolveWarehouseForRow = function (array $row) {
-//             if (!empty($row['warehouse_code'])) {
-//                 $warehouse = \App\Models\Warehouse::with('region')
-//                     ->where('warehouse_code', $row['warehouse_code'])
-//                     ->first();
-
-//                 if ($warehouse) {
-//                     return $warehouse;
-//                 }
-//             }
-
-//             if (!empty($row['warehouse'])) {
-//                 return \App\Models\Warehouse::with('region')
-//                     ->where('warehouse_name', $row['warehouse'])
-//                     ->first();
-//             }
-
-//             return null;
-//         };
-
-//         foreach ($rows as $row) {
-//             $sensorDeviceId = $row['sensor_device_id'];
-//             $sensorIp = $row['device_ip'];
-//             $sensorPort = $row['port'];
-
-//             $resolvedDeviceId = $row['device_id']; // currently null in IoT store flow
-//             if (!$resolvedDeviceId) {
-//                 $resolvedDeviceId = $resolveDeviceId($sensorDeviceId, $sensorIp, $sensorPort);
-//             }
-
-//             // If reading comes from this device and device is online => set devices.status online
-//             $status = $row['status'] ?? 'online';
-//             if ($resolvedDeviceId && strtolower($status) === 'online') {
-//                 Device::where('id', $resolvedDeviceId)->update(['status' => 'online']);
-//             }
-
-//             $level = $row['level'] ?? 'normal';
-//             $totalAlertAttempts++;
-
-//             // Determine alert type + message
-//             $type = null;
-//             $message = null;
-
-//             if ($level === 'critical') {
-//                 $type = 'critical';
-//                 $message = 'Critical Alert: Immediate action required.';
-//             } elseif ($level === 'severe') {
-//                 $type = 'severe';
-//                 $message = 'severe: Parameter out of range.';
-//             }
-
-//             // device_offline handling (optional)
-//             if ($type === null && $status === 'offline') {
-//                 $type = 'severe';
-//                 $message = 'Device is OFFLINE';
-//             }
-
-//             $legacyAlertType = $status === 'offline'
-//                 ? 'device_offline'
-//                 : ($type === 'critical' ? 'high_co2' : 'high_phosphorus');
-
-//             // If normal condition: close any active alerts for this device+severe/critical.
-//             if ($type === null) {
-//                 $closed = Alert::where('device_id', $sensorDeviceId)
-//                     ->whereIn('type', ['severe', 'critical'])
-//                     ->where('active', true)
-//                     ->update(['active' => false]);
-
-//                 $totalAlertsClosed += (int) $closed;
-//                 continue;
-//             }
-
-//             // Throttle by last_email_at for (device_id, type)
-//             $alert = \App\Models\Alert::where('device_id', $sensorDeviceId)
-//                 ->where('type', $type)
-//                 ->where('active', true)
-//                 ->first();
-
-//             $alertTypeLabel = $type === 'critical' ? 'CRITICAL' : 'severe';
-
-//             $buildMailBody = function () use ($row, $resolvedDeviceId, $sensorDeviceId, $message, $alertTypeLabel, $type, $resolveWarehouseForRow) {
-//                 $deviceForMail = $resolvedDeviceId
-//                     ? \App\Models\Device::with('warehouse.region')->find($resolvedDeviceId)
-//                     : null;
-//                 $warehouseForMail = $deviceForMail?->warehouse ?: $resolveWarehouseForRow($row);
-
-//                 $regionName = $warehouseForMail?->region?->region_name ?: ($row['region'] ?? null);
-//                 $regionCode = $warehouseForMail?->region?->region_code ?: ($row['region_code'] ?? null);
-//                 $warehouseName = $warehouseForMail?->warehouse_name ?: ($row['warehouse'] ?? null);
-//                 $warehouseCode = $warehouseForMail?->warehouse_code ?: ($row['warehouse_code'] ?? null);
-
-//                 $sensorId = $sensorDeviceId;
-
-//                 $recordedAt = isset($row['recorded_at'])
-//                     ? \Carbon\Carbon::parse($row['recorded_at'])->format('d M Y H:i')
-//                     : now()->format('d M Y H:i');
-
-//                 $deviceName = $row['device_name'] ?? null;
-//                 $deviceLine = $deviceName ? ($deviceName . ' (' . $sensorId . ')') : $sensorId;
-
-//                 return "==============================\n"
-//                     . "ATS WAREHOUSE ALERT\n"
-//                     . "==============================\n"
-//                     . "ALERT TYPE : {$alertTypeLabel}\n"
-//                     . "MESSAGE    : {$message}\n"
-//                     . "------------------------------\n"
-//                     . "DEVICE     : {$deviceLine}\n"
-//                     . "DEVICE IP  : " . ($row['device_ip'] ?? '-') . "\n"
-//                     . "PORT       : " . ($row['port'] ?? '-') . "\n"
-//                     . "------------------------------\n"
-//                     . "REGION     : " . ($regionName ?? '-') . " (" . ($regionCode ?? '-') . ")\n"
-//                     . "WAREHOUSE  : " . ($warehouseName ?? '-') . " (" . ($warehouseCode ?? '-') . ")\n"
-//                     . "GODOWN      : " . ($row['godown'] ?? '-') . "\n"
-//                     . "COMPARTMENT: " . ($row['compartment'] ?? '-') . "\n"
-//                     . "------------------------------\n"
-//                     . "READING    : value=" . ($row['reading_value'] ?? '-')
-//                     . ", level=" . ($row['level'] ?? '-')
-//                     . ", status=" . ($row['status'] ?? '-') . "\n"
-//                     . "UNIT       : " . ($row['unit'] ?? '-') . "\n"
-//                     . "RECORDED AT: {$recordedAt}\n"
-//                     . "------------------------------\n"
-//                     . "Generated by ATS IoT Monitoring\n";
-//             };
-
-//             $sendMail = function () use ($row, $resolvedDeviceId, $alertTypeLabel, $sensorDeviceId, $buildMailBody, $resolveWarehouseForRow, &$alertEmailsSent) {
-
-//                 $deviceForMail = $resolvedDeviceId
-//                     ? \App\Models\Device::with('warehouse')->find($resolvedDeviceId)
-//                     : null;
-//                 $warehouseForMail = $deviceForMail?->warehouse ?: $resolveWarehouseForRow($row);
-//                 $managerEmail = $warehouseForMail?->manager_email;
-
-//                 if (!$managerEmail) {
-//                     $managerEmail = null;
-//                     Log::warning('Mail not sent: manager_email missing', [
-//                         'sensor_device_id' => $sensorDeviceId,
-//                         'warehouse_code' => $row['warehouse_code'] ?? $row['warehouse'] ?? null,
-//                         'resolved_device_id' => $resolvedDeviceId,
-//                         'warehouse_id' => $warehouseForMail?->id,
-//                         'alert_type' => $alertTypeLabel,
-//                     ]);
-//                     return;
-//                 }
-
-
-//                 try {
-//                     $mailBody = $buildMailBody();
-
-//                     $warehouseName = $warehouseForMail?->warehouse_name ?: ($row['warehouse'] ?? null);
-//                     $warehouseCode = $warehouseForMail?->warehouse_code ?: ($row['warehouse_code'] ?? null);
-//                     $target = ($warehouseCode && $warehouseName)
-//                         ? "{$warehouseName} ({$warehouseCode})"
-//                         : ($warehouseName ?: ($warehouseCode ?: 'Warehouse'));
-
-//                     \Illuminate\Support\Facades\Mail::raw(
-//                         $mailBody,
-//                         function ($m) use ($managerEmail, $alertTypeLabel, $target) {
-//                             $m->to($managerEmail)->subject('Warehouse Alert [' . $alertTypeLabel . ']: ' . $target);
-//                         }
-//                     );
-
-//                     $alertEmailsSent++;
-//                 } catch (\Throwable $e) {
-//                     // swallow to avoid breaking ingestion
-//                 }
-//             };
-
-
-//             $sendWhatsapp = function () use (
-//                 $row,
-//                 $resolvedDeviceId,
-//                 $alertTypeLabel,
-//                 $buildMailBody,
-//                 $resolveWarehouseForRow,
-//                 &$alertEmailsSent
-//             ) {
-
-//                 $deviceForMsg = $resolvedDeviceId
-//                     ? \App\Models\Device::with('warehouse')->find($resolvedDeviceId)
-//                     : null;
-
-//                 $warehouseForMsg = $deviceForMsg?->warehouse ?: $resolveWarehouseForRow($row);
-
-//                 $phone = $warehouseForMsg?->manager_phone;
-
-//                 if (!$phone) {
-//                     return;
-//                 }
-
-//                 $phone = preg_replace('/\D/', '', $phone);
-
-//                 try {
-
-//                     $msg = $buildMailBody();
-//                     $response = Http::timeout(20)->asForm()->post(
-//                         'http://wapi.asgsinfosystem.in/wapp/v2/api/send',
-//                         [
-//                             'apikey' => env('WAPI_KEY'),
-//                             'mobile' => $phone,
-//                             'msg' => $msg,
-//                         ]
-//                     );
-
-//                     Log::info('WhatsApp sent', [
-//                         'phone' => $phone,
-//                         'response' => $response->body()
-//                     ]);
-//                 } catch (\Throwable $e) {
-
-//                     Log::error('WhatsApp send failed', [
-//                         'phone' => $phone,
-//                         'error' => $e->getMessage()
-//                     ]);
-//                 }
-//             };
-
-
-
-//             if (!$alert) {
-//                 $created = Alert::create([
-//                     'device_id' => $sensorDeviceId,
-//                     'reading_id' => $row['reading_id'] ?? null,
-//                     'type' => $type ?? null,
-//                     'message' => $message,
-
-
-//                     'last_email_at' => now(),
-//                     'active' => true,
-//                     // legacy columns
-//                     'alert_type' => $legacyAlertType,
-//                     'alert_value' => $row['reading_value'] ?? 0,
-//                 ]);
-
-//                 $totalAlertsCreated += $created ? 1 : 0;
-
-//                 $warehouseAlertThrottleKey = 'warehouse-alert-mail:' . sha1(implode('|', [
-//                     $sensorDeviceId,
-//                     $row['warehouse_code'] ?? $row['warehouse'] ?? '',
-//                     $type,
-//                     $row['reading_id'] ?? '',
-//                 ]));
-
-//                 if (\Illuminate\Support\Facades\Cache::add($warehouseAlertThrottleKey, true, now()->addHour())) {
-//                     $sendMail();
-//                     $sendWhatsapp();
-//                 }
-
-//                 continue;
-//             }
-
-//             Log::info('CACHE DEBUG', [
-//     'reading_id' => $row['reading_id'] ?? 'NULL',
-//     'cache_key' => $warehouseAlertThrottleKey,
-//     'cache_add_result' => \Illuminate\Support\Facades\Cache::has($warehouseAlertThrottleKey),
-// ]);
-
-//             $last = $alert->last_email_at;
-//             $canSend = !$last || \Carbon\Carbon::parse($last)->addHour()->lte(now());
-
-
-//             if ($canSend) {
-
-//                 $sendMail();
-
-//                 $sendWhatsapp();
-
-//                 $alert->update([
-//                     'last_email_at' => now()
-//                 ]);
-//             }
-//         }
-
-        
-
-//         return response()->json([
-//             'success' => true,
-//             'message' => 'Readings stored successfully',
-//             'count' => count($rows),
-//             'alerting' => [
-//                 'attempts' => $totalAlertAttempts,
-//                 'alerts_created' => $totalAlertsCreated,
-//                 'alerts_closed' => $totalAlertsClosed,
-//                 'alert_emails_sent' => $alertEmailsSent,
-//             ],
-//         ]);
-//     }
-
-public function store(Request $request)
-{
-    $rows = [];
-
-    foreach ($request->readings as $reading) {
-        $row = [
-            'key' => $request->key,
-            'sensor_device_id' => $reading['device_id'] ?? null,
-            'device_id' => null,
-            'device_name' => $reading['device_name'] ?? null,
-            'device_type' => $reading['device_type'] ?? null,
-            'device_ip' => $reading['device_ip'] ?? null,
-            'unit' => $reading['unit'] ?? null,
-            'port' => $reading['port'] ?? null,
-            'region' => $reading['region'] ?? null,
-            'region_code' => $reading['region_code'] ?? null,
-            'warehouse' => $reading['warehouse'] ?? null,
-            'warehouse_code' => $reading['warehouse_code'] ?? null,
-            'godown' => $reading['godown'] ?? null,
-            'compartment' => $reading['compartment'] ?? null,
-            'reading_value' => $reading['value'] ?? null,
-            'level' => strtolower($reading['level'] ?? 'normal'),
-            'status' => strtolower($reading['status'] ?? 'online'),
-            'recorded_at' => $reading['recorded_at'] ?? now(),
-        ];
-
-        $createdReading = Reading::create($row);
-        $row['reading_id'] = $createdReading->id;
-        $rows[] = $row;
-    }
-
-    $totalAlertsCreated = 0;
-    $totalAlertsClosed = 0;
-    $totalAlertAttempts = 0;
-    $alertEmailsSent = 0;
-
-    $resolveDeviceId = function (?string $sensorDeviceId, ?string $sensorIp, $sensorPort) {
-        if (!$sensorDeviceId) return null;
-
-        if (is_numeric($sensorDeviceId)) {
-            $byId = Device::where('id', (int) $sensorDeviceId)->first();
-            if ($byId) return $byId->id;
+    public function store(Request $request)
+    {
+        $rows = [];
+
+        foreach ($request->readings as $reading) {
+            $row = [
+                'key' => $request->key,
+                'sensor_device_id' => $reading['device_id'] ?? null,
+                'device_id' => null,
+                'device_name' => $reading['device_name'] ?? null,
+                'device_type' => $reading['device_type'] ?? null,
+                'device_ip' => $reading['device_ip'] ?? null,
+                'unit' => $reading['unit'] ?? null,
+                'port' => $reading['port'] ?? null,
+                'region' => $reading['region'] ?? null,
+                'region_code' => $reading['region_code'] ?? null,
+                'warehouse' => $reading['warehouse'] ?? null,
+                'warehouse_code' => $reading['warehouse_code'] ?? null,
+                'godown' => $reading['godown'] ?? null,
+                'compartment' => $reading['compartment'] ?? null,
+                'reading_value' => $reading['value'] ?? null,
+                'level' => strtolower($reading['level'] ?? 'normal'),
+                'status' => strtolower($reading['status'] ?? 'online'),
+                'recorded_at' => $reading['recorded_at'] ?? now(),
+            ];
+
+            $createdReading = Reading::create($row);
+            $row['reading_id'] = $createdReading->id;
+            $rows[] = $row;
         }
 
-        $byCode = Device::where('device_code', $sensorDeviceId)->first();
-        if ($byCode) return $byCode->id;
+        $totalAlertsCreated = 0;
+        $totalAlertsClosed = 0;
+        $totalAlertAttempts = 0;
+        $alertEmailsSent = 0;
 
-        if (str_contains($sensorDeviceId, '_')) {
-            $parts = explode('_', $sensorDeviceId);
-            $parsedIp = $parts[1] ?? null;
-            $lookupIp = $sensorIp ?: $parsedIp;
-
-            if ($lookupIp) {
-                $byIp = Device::where('ip_address', $lookupIp)->first();
-                if ($byIp) return $byIp->id;
+        $resolveDeviceId = function (?string $sensorDeviceId, ?string $sensorIp, $sensorPort) {
+            if (!$sensorDeviceId) return null;
+            if (is_numeric($sensorDeviceId)) {
+                $byId = Device::where('id', (int) $sensorDeviceId)->first();
+                if ($byId) return $byId->id;
             }
-        }
-
-        return null;
-    };
-
-    $resolveWarehouseForRow = function (array $row) {
-        if (!empty($row['warehouse_code'])) {
-            $warehouse = \App\Models\Warehouse::with('region')
-                ->where('warehouse_code', $row['warehouse_code'])
-                ->first();
-            if ($warehouse) return $warehouse;
-        }
-
-        if (!empty($row['warehouse'])) {
-            return \App\Models\Warehouse::with('region')
-                ->where('warehouse_name', $row['warehouse'])
-                ->first();
-        }
-
-        return null;
-    };
-
-    foreach ($rows as $row) {
-        $sensorDeviceId = $row['sensor_device_id'];
-        $sensorIp       = $row['device_ip'];
-        $sensorPort     = $row['port'];
-
-        $resolvedDeviceId = $row['device_id'];
-        if (!$resolvedDeviceId) {
-            $resolvedDeviceId = $resolveDeviceId($sensorDeviceId, $sensorIp, $sensorPort);
-        }
-
-        $status = $row['status'] ?? 'online';
-        if ($resolvedDeviceId && strtolower($status) === 'online') {
-            Device::where('id', $resolvedDeviceId)->update(['status' => 'online']);
-        }
-
-        $level = $row['level'] ?? 'normal';
-        $totalAlertAttempts++;
-
-        $type    = null;
-        $message = null;
-
-        if ($level === 'critical') {
-            $type    = 'critical';
-            $message = 'Critical Alert: Immediate action required.';
-        } elseif ($level === 'severe') {
-            $type    = 'severe';
-            $message = 'Severe: Parameter out of range.';
-        }
-
-        if ($type === null && $status === 'offline') {
-            $type    = 'severe';
-            $message = 'Device is OFFLINE';
-        }
-
-        $legacyAlertType = $status === 'offline'
-            ? 'device_offline'
-            : ($type === 'critical' ? 'high_co2' : 'high_phosphorus');
-
-        // Normal — close active alerts
-        if ($type === null) {
-            $closed = Alert::where('device_id', $sensorDeviceId)
-                ->whereIn('type', ['severe', 'critical'])
-                ->where('active', true)
-                ->update(['active' => false]);
-
-            $totalAlertsClosed += (int) $closed;
-            continue;
-        }
-
-        $alertTypeLabel = $type === 'critical' ? 'CRITICAL' : 'SEVERE';
-
-        // ── buildMailBody ──────────────────────────────────────────
-        $buildMailBody = function () use ($row, $resolvedDeviceId, $sensorDeviceId, $message, $alertTypeLabel, $resolveWarehouseForRow) {
-
-            $deviceForMail    = $resolvedDeviceId
-                ? \App\Models\Device::with('warehouse.region')->find($resolvedDeviceId)
-                : null;
-            $warehouseForMail = $deviceForMail?->warehouse ?: $resolveWarehouseForRow($row);
-
-            $regionName    = $warehouseForMail?->region?->region_name  ?: ($row['region']         ?? null);
-            $regionCode    = $warehouseForMail?->region?->region_code  ?: ($row['region_code']    ?? null);
-            $warehouseName = $warehouseForMail?->warehouse_name        ?: ($row['warehouse']      ?? null);
-            $warehouseCode = $warehouseForMail?->warehouse_code        ?: ($row['warehouse_code'] ?? null);
-
-            $recordedAt = isset($row['recorded_at'])
-                ? \Carbon\Carbon::parse($row['recorded_at'])->format('d M Y H:i')
-                : now()->format('d M Y H:i');
-
-            $deviceName = $row['device_name'] ?? null;
-            $deviceLine = $deviceName ? ($deviceName . ' (' . $sensorDeviceId . ')') : $sensorDeviceId;
-
-            return "==============================\n"
-                . "ATS WAREHOUSE ALERT\n"
-                . "==============================\n"
-                . "ALERT TYPE : {$alertTypeLabel}\n"
-                . "MESSAGE    : {$message}\n"
-                . "------------------------------\n"
-                . "DEVICE     : {$deviceLine}\n"
-                . "DEVICE IP  : " . ($row['device_ip'] ?? '-') . "\n"
-                . "------------------------------\n"
-                . "REGION     : " . ($regionName    ?? '-') . " (" . ($regionCode    ?? '-') . ")\n"
-                . "WAREHOUSE  : " . ($warehouseName ?? '-') . " (" . ($warehouseCode ?? '-') . ")\n"
-                . "GODOWN     : " . ($row['godown']      ?? '-') . "\n"
-                . "COMPARTMENT: " . ($row['compartment'] ?? '-') . "\n"
-                . "------------------------------\n"
-                . "READING    : value=" . ($row['reading_value'] ?? '-')
-                . ", level="           . ($row['level']          ?? '-')
-                . ", status="          . ($row['status']         ?? '-') . "\n"
-                . "UNIT       : "      . ($row['unit'] ?? '-') . "\n"
-                . "RECORDED AT: {$recordedAt}\n"
-                . "------------------------------\n"
-                . "Generated by ATS IoT Monitoring\n";
+            $byCode = Device::where('device_code', $sensorDeviceId)->first();
+            if ($byCode) return $byCode->id;
+            if (str_contains($sensorDeviceId, '_')) {
+                $parts = explode('_', $sensorDeviceId);
+                $parsedIp = $parts[1] ?? null;
+                $lookupIp = $sensorIp ?: $parsedIp;
+                if ($lookupIp) {
+                    $byIp = Device::where('ip_address', $lookupIp)->first();
+                    if ($byIp) return $byIp->id;
+                }
+            }
+            return null;
         };
 
-        // ── sendMail ───────────────────────────────────────────────
-        $sendMail = function () use ($row, $resolvedDeviceId, $alertTypeLabel, $sensorDeviceId, $buildMailBody, $resolveWarehouseForRow, &$alertEmailsSent) {
+        $resolveWarehouseForRow = function (array $row) {
+            if (!empty($row['warehouse_code'])) {
+                $warehouse = \App\Models\Warehouse::with('region')
+                    ->where('warehouse_code', $row['warehouse_code'])
+                    ->first();
+                if ($warehouse) return $warehouse;
+            }
+            if (!empty($row['warehouse'])) {
+                return \App\Models\Warehouse::with('region')
+                    ->where('warehouse_name', $row['warehouse'])
+                    ->first();
+            }
+            return null;
+        };
 
-            $deviceForMail    = $resolvedDeviceId
-                ? \App\Models\Device::with('warehouse')->find($resolvedDeviceId)
-                : null;
-            $warehouseForMail = $deviceForMail?->warehouse ?: $resolveWarehouseForRow($row);
-            $managerEmail     = $warehouseForMail?->manager_email;
+        foreach ($rows as $row) {
+            $sensorDeviceId = $row['sensor_device_id'];
+            $sensorIp = $row['device_ip'];
+            $sensorPort = $row['port'];
 
-            if (!$managerEmail) {
-                Log::warning('Mail not sent: manager_email missing', [
-                    'sensor_device_id'   => $sensorDeviceId,
-                    'warehouse_code'     => $row['warehouse_code'] ?? $row['warehouse'] ?? null,
-                    'resolved_device_id' => $resolvedDeviceId,
-                    'warehouse_id'       => $warehouseForMail?->id,
-                    'alert_type'         => $alertTypeLabel,
-                ]);
-                return;
+            $resolvedDeviceId = $row['device_id'];
+            if (!$resolvedDeviceId) {
+                $resolvedDeviceId = $resolveDeviceId($sensorDeviceId, $sensorIp, $sensorPort);
             }
 
-            try {
-                $mailBody = $buildMailBody();
+            $status = $row['status'] ?? 'online';
+            if ($resolvedDeviceId && strtolower($status) === 'online') {
+                Device::where('id', $resolvedDeviceId)->update(['status' => 'online']);
+            }
 
-                $warehouseName = $warehouseForMail?->warehouse_name ?: ($row['warehouse']      ?? null);
+            $level = $row['level'] ?? 'normal';
+            $totalAlertAttempts++;
+
+            $type = null;
+            $message = null;
+
+            if ($level === 'critical') {
+                $type = 'critical';
+                $message = 'Critical Alert: Immediate action required.';
+            } elseif ($level === 'severe') {
+                $type = 'severe';
+                $message = 'Severe: Parameter out of range.';
+            }
+
+            if ($type === null && $status === 'offline') {
+                $type = 'severe';
+                $message = 'Device is OFFLINE';
+            }
+
+            $legacyAlertType = $status === 'offline'
+                ? 'device_offline'
+                : ($type === 'critical' ? 'high_co2' : 'high_phosphorus');
+
+            if ($type === null) {
+                $closed = Alert::where('device_id', $sensorDeviceId)
+                    ->whereIn('type', ['severe', 'critical'])
+                    ->where('active', true)
+                    ->update(['active' => false]);
+
+                $totalAlertsClosed += (int) $closed;
+                continue;
+            }
+
+            $alertTypeLabel = $type === 'critical' ? 'CRITICAL' : 'SEVERE';
+
+            // Fetch Warehouse & Region Data
+            $deviceForMail = $resolvedDeviceId ? \App\Models\Device::with('warehouse.region')->find($resolvedDeviceId) : null;
+            $warehouseForMail = $deviceForMail?->warehouse ?: $resolveWarehouseForRow($row);
+            $region = $warehouseForMail?->region;
+
+            $managerEmail   = $warehouseForMail?->manager_email;
+            $regionalEmail  = $region?->manager_email;
+            $managerPhone   = $warehouseForMail?->manager_phone;
+            $regionalPhone  = $region?->manager_phone;
+
+            // === ROUTING CHECK ===
+            $deviceTypeKey = strtolower($row['device_type'] ?? 'co2');
+            $levelKey = strtolower($type);
+
+            $routing = \App\Models\EmailRouting::where('device_type', $deviceTypeKey)
+                ->where('level', $levelKey)
+                ->first();
+
+            $warehouseMail     = $routing?->warehouse_mail ?? false;
+            $warehouseWA       = $routing?->warehouse_whatsapp ?? false;
+            $regionalMail      = $routing?->regional_mail ?? false;
+            $regionalWA        = $routing?->regional_whatsapp ?? false;
+            $ccEmails = CcEmail::where('status', 1)
+                ->pluck('email')
+                ->toArray();
+
+            Log::info('ROUTING CHECK', [
+                'device_type'     => $deviceTypeKey,
+                'level'           => $levelKey,
+                'warehouse_mail'  => (int)$warehouseMail,
+                'warehouse_wa'    => (int)$warehouseWA,
+                'regional_mail'   => (int)$regionalMail,
+                'regional_wa'     => (int)$regionalWA,
+            ]);
+
+            // Build Mail Body
+            $buildMailBody = function () use ($row, $resolvedDeviceId, $sensorDeviceId, $message, $alertTypeLabel, $resolveWarehouseForRow) {
+                $deviceForMail = $resolvedDeviceId ? \App\Models\Device::with('warehouse.region')->find($resolvedDeviceId) : null;
+                $warehouseForMail = $deviceForMail?->warehouse ?: $resolveWarehouseForRow($row);
+
+                $regionName = $warehouseForMail?->region?->region_name ?: ($row['region'] ?? null);
+                $regionCode = $warehouseForMail?->region?->region_code ?: ($row['region_code'] ?? null);
+                $warehouseName = $warehouseForMail?->warehouse_name ?: ($row['warehouse'] ?? null);
                 $warehouseCode = $warehouseForMail?->warehouse_code ?: ($row['warehouse_code'] ?? null);
-                $target = ($warehouseCode && $warehouseName)
-                    ? "{$warehouseName} ({$warehouseCode})"
-                    : ($warehouseName ?: ($warehouseCode ?: 'Warehouse'));
 
-                \Illuminate\Support\Facades\Mail::raw(
-                    $mailBody,
-                    function ($m) use ($managerEmail, $alertTypeLabel, $target) {
-                        $m->to($managerEmail)
-                          ->subject('Warehouse Alert [' . $alertTypeLabel . ']: ' . $target);
+                $recordedAt = isset($row['recorded_at'])
+                    ? \Carbon\Carbon::parse($row['recorded_at'])->format('d M Y H:i')
+                    : now()->format('d M Y H:i');
+
+                $deviceName = $row['device_name'] ?? null;
+                $deviceLine = $deviceName ? ($deviceName . ' (' . $sensorDeviceId . ')') : $sensorDeviceId;
+
+                return "==============================\n"
+                    . "ATS WAREHOUSE ALERT\n"
+                    . "==============================\n"
+                    . "ALERT TYPE : {$alertTypeLabel}\n"
+                    . "MESSAGE : {$message}\n"
+                    . "------------------------------\n"
+                    . "DEVICE : {$deviceLine}\n"
+                    . "DEVICE IP : " . ($row['device_ip'] ?? '-') . "\n"
+                    . "------------------------------\n"
+                    . "REGION : " . ($regionName ?? '-') . " (" . ($regionCode ?? '-') . ")\n"
+                    . "WAREHOUSE : " . ($warehouseName ?? '-') . " (" . ($warehouseCode ?? '-') . ")\n"
+                    . "GODOWN : " . ($row['godown'] ?? '-') . "\n"
+                    . "COMPARTMENT: " . ($row['compartment'] ?? '-') . "\n"
+                    . "------------------------------\n"
+                    . "READING : value=" . ($row['reading_value'] ?? '-')
+                    . ", level=" . ($row['level'] ?? '-')
+                    . ", status=" . ($row['status'] ?? '-') . "\n"
+                    . "UNIT : " . ($row['unit'] ?? '-') . "\n"
+                    . "RECORDED AT: {$recordedAt}\n"
+                    . "------------------------------\n"
+                    . "Generated by ATS IoT Monitoring\n";
+            };
+
+            // Send Mail - Correct Flag Check
+            $sendMail = function () use ($row, $alertTypeLabel, $managerEmail, $regionalEmail, $ccEmails, &$alertEmailsSent, $buildMailBody, $warehouseMail, $regionalMail) {
+                if (!$managerEmail) return;   // Warehouse manager must exist for mail
+
+                try {
+                    $mailBody = $buildMailBody();
+                    $target = $row['warehouse'] ?? 'Warehouse';
+
+                    $allCc = [];
+                    // Only add regional if regional_mail flag is true
+                    if ($regionalMail && $regionalEmail) {
+                        $allCc[] = $regionalEmail;
                     }
-                );
+                    // Add system CC emails
+                    if (!empty($ccEmails)) {
+                        $allCc = array_merge($allCc, $ccEmails);
+                    }
+                    $allCc = array_unique(array_filter($allCc));
 
-                $alertEmailsSent++;
-                Log::info('Mail sent', [
-                    'to'         => $managerEmail,
-                    'alert_type' => $alertTypeLabel,
+                    \Illuminate\Support\Facades\Mail::raw(
+                        $mailBody,
+                        function ($m) use ($managerEmail, $alertTypeLabel, $target, $allCc) {
+                            $m->to($managerEmail)
+                                ->subject('Warehouse Alert [' . $alertTypeLabel . ']: ' . $target);
+
+                            if (!empty($allCc)) {
+                                $m->cc($allCc);
+                            }
+                        }
+                    );
+
+                    $alertEmailsSent++;
+                    Log::info('Mail sent successfully', [
+                        'to'       => $managerEmail,
+                        'cc_count' => count($allCc),
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::error('MAIL SEND FAILED', ['error' => $e->getMessage()]);
+                }
+            };
+
+            // Send WhatsApp - Independent flags
+            $sendWhatsapp = function ($phone) use ($buildMailBody) {
+                if (!$phone) return;
+
+                $cleanPhone = preg_replace('/\D/', '', $phone);
+
+                try {
+                    $msg = $buildMailBody();
+                    $response = Http::timeout(20)->asForm()->post(
+                        'http://wapi.asgsinfosystem.in/wapp/v2/api/send',
+                        [
+                            'apikey' => env('WAPI_KEY'),
+                            'mobile' => $cleanPhone,
+                            'msg' => $msg,
+                        ]
+                    );
+
+                    Log::info('WhatsApp sent', ['phone' => $cleanPhone]);
+                } catch (\Throwable $e) {
+                    Log::error('WhatsApp send failed', ['phone' => $cleanPhone, 'error' => $e->getMessage()]);
+                }
+            };
+
+            // Alert Logic
+            $alert = \App\Models\Alert::where('device_id', $sensorDeviceId)
+                ->where('type', $type)
+                ->where('active', true)
+                ->first();
+
+            if (!$alert) {
+                $created = Alert::create([
+                    'device_id' => $sensorDeviceId,
+                    'reading_id' => $row['reading_id'] ?? null,
+                    'type' => $type,
+                    'message' => $message,
+                    'last_email_at' => null,
+                    'active' => true,
+                    'alert_type' => $legacyAlertType,
+                    'alert_value' => $row['reading_value'] ?? 0,
                 ]);
 
-            } catch (\Throwable $e) {
-                Log::error('MAIL SEND FAILED', [
-                    'error' => $e->getMessage(),
-                ]);
+                $totalAlertsCreated += $created ? 1 : 0;
+
+                // Direct flag checks
+                if ($warehouseMail || $regionalMail) {
+                    $sendMail();
+                }
+                if ($warehouseWA) {
+                    $sendWhatsapp($managerPhone);
+                }
+                if ($regionalWA) {
+                    $sendWhatsapp($regionalPhone);
+                }
+
+                $created->update(['last_email_at' => now()]);
+                continue;
             }
-        };
 
-        // ── sendWhatsapp ───────────────────────────────────────────
-        $sendWhatsapp = function () use ($row, $resolvedDeviceId, $buildMailBody, $resolveWarehouseForRow) {
+            // Existing alert throttle
+            $last = $alert->last_email_at;
+            $canSend = !$last || \Carbon\Carbon::parse($last)->addHour()->lte(now());
 
-            $deviceForMsg    = $resolvedDeviceId
-                ? \App\Models\Device::with('warehouse')->find($resolvedDeviceId)
-                : null;
-            $warehouseForMsg = $deviceForMsg?->warehouse ?: $resolveWarehouseForRow($row);
-            $phone           = $warehouseForMsg?->manager_phone;
+            if ($canSend) {
+                if ($warehouseMail || $regionalMail) {
+                    $sendMail();
+                }
+                if ($warehouseWA) {
+                    $sendWhatsapp($managerPhone);
+                }
+                if ($regionalWA) {
+                    $sendWhatsapp($regionalPhone);
+                }
 
-            if (!$phone) {
-                Log::warning('WhatsApp not sent: manager_phone missing', [
-                    'warehouse_code' => $row['warehouse_code'] ?? $row['warehouse'] ?? null,
-                ]);
-                return;
+                $alert->update(['last_email_at' => now()]);
             }
-
-            $phone = preg_replace('/\D/', '', $phone);
-
-            try {
-                $msg = $buildMailBody();
-
-                $response = Http::timeout(20)->asForm()->post(
-                    'http://wapi.asgsinfosystem.in/wapp/v2/api/send',
-                    [
-                        'apikey' => env('WAPI_KEY'),
-                        'mobile' => $phone,
-                        'msg'    => $msg,
-                    ]
-                );
-
-                Log::info('WhatsApp sent', [
-                    'phone'    => $phone,
-                    'response' => $response->body(),
-                ]);
-
-            } catch (\Throwable $e) {
-                Log::error('WhatsApp send failed', [
-                    'phone' => $phone,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        };
-
-        // ── Alert logic ────────────────────────────────────────────
-        $alert = \App\Models\Alert::where('device_id', $sensorDeviceId)
-            ->where('type', $type)
-            ->where('active', true)
-            ->first();
-
-        if (!$alert) {
-            // Naya alert — seedha mail bhejo, koi cache nahi
-            $created = Alert::create([
-                'device_id'     => $sensorDeviceId,
-                'reading_id'    => $row['reading_id'] ?? null,
-                'type'          => $type,
-                'message'       => $message,
-                'last_email_at' => null,
-                'active'        => true,
-                'alert_type'    => $legacyAlertType,
-                'alert_value'   => $row['reading_value'] ?? 0,
-            ]);
-
-            $totalAlertsCreated += $created ? 1 : 0;
-
-            Log::info('NEW ALERT - SENDING MAIL+WA', [
-                'sensor_device_id' => $sensorDeviceId,
-                'type'             => $type,
-                'reading_id'       => $row['reading_id'] ?? null,
-            ]);
-
-            $sendMail();
-            $sendWhatsapp();
-
-            $created->update(['last_email_at' => now()]);
-
-            continue;
         }
 
-        // Existing alert — 1 hour throttle
-        $last     = $alert->last_email_at;
-        $canSend  = !$last || \Carbon\Carbon::parse($last)->addHour()->lte(now());
-
-        Log::info('EXISTING ALERT CHECK', [
-            'sensor_device_id' => $sensorDeviceId,
-            'type'             => $type,
-            'last_email_at'    => $last,
-            'can_send'         => $canSend,
+        return response()->json([
+            'success' => true,
+            'message' => 'Readings stored successfully',
+            'count' => count($rows),
+            'alerting' => [
+                'attempts' => $totalAlertAttempts,
+                'alerts_created' => $totalAlertsCreated,
+                'alerts_closed' => $totalAlertsClosed,
+                'alert_emails_sent' => $alertEmailsSent,
+            ],
         ]);
-
-        if ($canSend) {
-            $sendMail();
-            $sendWhatsapp();
-            $alert->update(['last_email_at' => now()]);
-        }
     }
-
-    return response()->json([
-        'success' => true,
-        'message' => 'Readings stored successfully',
-        'count'   => count($rows),
-        'alerting' => [
-            'attempts'          => $totalAlertAttempts,
-            'alerts_created'    => $totalAlertsCreated,
-            'alerts_closed'     => $totalAlertsClosed,
-            'alert_emails_sent' => $alertEmailsSent,
-        ],
-    ]);
-}
 }

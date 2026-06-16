@@ -13,11 +13,15 @@ class Region extends Model
     protected $fillable = [
         'region_code',
         'region_name',
-        'status'
+        'status',
+        'manager_name',
+        'manager_phone',
+        'manager_email',
     ];
 
     public function warehouses()
-{
-    return $this->hasMany(Warehouse::class);
+    {
+        return $this->hasMany(Warehouse::class);
+    }
 }
-}
+

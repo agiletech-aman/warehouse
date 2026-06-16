@@ -25,12 +25,18 @@ class RegionController extends Controller
             'region_code' => 'required|unique:regions,region_code',
             'region_name' => 'required',
             'status' => 'required|in:active,inactive',
+            'manager_name' => 'nullable|string|max:100',
+            'manager_email' => 'nullable|email|max:100',
+            'manager_phone' => 'nullable|string|max:20',
         ]);
 
         Region::create([
             'region_code' => $request->region_code,
             'region_name' => $request->region_name,
             'status' => $request->status,
+            'manager_name' => $request->manager_name,
+            'manager_email' => $request->manager_email,
+            'manager_phone' => $request->manager_phone,
         ]);
 
         return redirect()
@@ -52,14 +58,20 @@ class RegionController extends Controller
     {
         $request->validate([
             'region_code' => 'required|unique:regions,region_code,' . $region->id,
-            'region_name'=>'required',
+            'region_name' => 'required',
             'status' => 'required|in:active,inactive',
+            'manager_name' => 'nullable|string|max:100',
+            'manager_email' => 'nullable|email|max:100',
+            'manager_phone' => 'nullable|string|max:20',
         ]);
 
         $region->update([
             'region_code' => $request->region_code,
-            'region_name'=>$request->region_name,
-            'status'=>$request->status
+            'region_name' => $request->region_name,
+            'status' => $request->status,
+            'manager_name' => $request->manager_name,
+            'manager_email' => $request->manager_email,
+            'manager_phone' => $request->manager_phone,
         ]);
 
         return redirect()

@@ -34,6 +34,39 @@ class="form-control">
 
 <div class="mb-3">
 
+<label>Manager Name</label>
+
+<input type="text"
+name="manager_name"
+class="form-control"
+value="{{ old('manager_name') }}">
+
+</div>
+
+<div class="mb-3">
+
+<label>Manager Email</label>
+
+<input type="email"
+name="manager_email"
+class="form-control"
+value="{{ old('manager_email') }}">
+
+</div>
+
+<div class="mb-3">
+
+<label>Manager Mobile </label>
+
+<input type="text"
+name="manager_phone"
+class="form-control"
+value="{{ old('manager_phone') }}">
+
+</div>
+
+<div class="mb-3">
+
 <label>Status</label>
 
 
