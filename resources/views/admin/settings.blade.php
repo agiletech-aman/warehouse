@@ -122,7 +122,7 @@
     {{-- Alert CC Emails --}}
     <div class="card border-0 shadow-sm p-4 mt-4">
         <h3 class="mb-1">Alert CC Emails</h3>
-        <p class="text-muted mb-3">Yeh email addresses har alert mail mein CC hoti hain (jab Active hon).</p>
+        <p class="text-muted mb-3">These email addresses will receive a copy (CC) of every alert email when enabled.</p>
 
         {{-- Add new CC email --}}
         <form action="{{ route('settings.cc-emails.store') }}" method="POST" class="row g-2 align-items-end mb-3">
@@ -200,6 +200,7 @@
 <div class="modal fade" id="emailRoutingModal" tabindex="-1" aria-labelledby="emailRoutingModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl">
         <div class="modal-content border-0 shadow">
+            <div id="validationError" class="alert alert-danger d-none"></div>
             <form method="POST" action="{{ route('settings.email-routing.update') }}">
                 @csrf
                 <div class="modal-header border-0 pb-0">
@@ -377,6 +378,47 @@
         </div>
     </div>
 </div>
+
+<script>
+    document.querySelector('#emailRoutingModal form')
+        .addEventListener('submit', function(e) {
+
+            let invalid = false;
+            let message = '';
+
+            ['co2', 'ph3'].forEach(type => {
+
+                ['normal', 'severe', 'critical'].forEach(level => {
+
+                    let key = `${type}_${level}`;
+
+                    let warehouseMail =
+                        document.querySelector(`[name="warehouse_mail_${key}"]`).checked;
+
+                    let regionalMail =
+                        document.querySelector(`[name="regional_mail_${key}"]`).checked;
+
+                    if (regionalMail && !warehouseMail) {
+
+                        invalid = true;
+
+                        message =
+                            `${type.toUpperCase()} ${level.toUpperCase()}: Regional Mail requires Warehouse Mail to be enabled.`;
+                    }
+                });
+
+            });
+
+            if (invalid) {
+                e.preventDefault();
+
+                const errorBox = document.getElementById('validationError');
+                errorBox.innerText = message;
+                errorBox.classList.remove('d-none');
+            }
+
+        });
+</script>
 
 <script>
     function openEditCcModal(id, email) {
