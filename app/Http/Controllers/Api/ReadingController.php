@@ -357,6 +357,7 @@ class ReadingController extends Controller
                     . "------------------------------\n"
                     . "DEVICE : {$deviceLine}\n"
                     . "DEVICE IP : " . ($row['device_ip'] ?? '-') . "\n"
+                    . "DEVICE TYPE : " . ($row['device_type'] ?? '-') . "\n"
                     . "------------------------------\n"
                     . "REGION : " . ($regionName ?? '-') . " (" . ($regionCode ?? '-') . ")\n"
                     . "WAREHOUSE : " . ($warehouseName ?? '-') . " (" . ($warehouseCode ?? '-') . ")\n"
