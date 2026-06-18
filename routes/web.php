@@ -10,6 +10,8 @@ use App\Http\Controllers\WarehouseController;
 use App\Models\Reading;
 use App\Models\Region;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\GlobalSearchController;
+
 
 
 Route::get('/', [AdminController::class, 'showLogin'])->name('admin.login');
@@ -47,7 +49,11 @@ Route::put('/settings/cc-emails/{id}', [AdminController::class, 'updateCcEmail']
 Route::delete('/settings/cc-emails/{id}', [AdminController::class, 'destroyCcEmail'])->name('settings.cc-emails.destroy');
 Route::post('/settings/cc-emails/{id}/toggle', [AdminController::class, 'toggleCcEmail'])->name('settings.cc-emails.toggle');
 
+Route::get('/admin/global-search', [GlobalSearchController::class, 'index'])
+    ->name('admin.global-search');
+
 Route::get('/hierarchy', function () {
+
     $latestDeviceReadings = Reading::query()
         ->whereNotNull('sensor_device_id')
         ->orderByDesc('recorded_at')

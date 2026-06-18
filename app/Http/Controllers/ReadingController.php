@@ -19,7 +19,7 @@ class ReadingController extends Controller
     public function create()
     {
         // UI: readings can still be manually linked to a device (optional).
-        // Import removed since IoT store flow no longer resolves device FK.
+        // Import removed since monitoring system store flow no longer resolves device FK.
         $devices = \App\Models\Device::latest()->get();
 
         return view('readings.create', compact('devices'));

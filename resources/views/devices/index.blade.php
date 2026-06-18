@@ -9,7 +9,7 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div>
                 <h3 class="mb-1">Devices</h3>
-                <p class="text-muted mb-0">Latest IoT devices received from sensor readings.</p>
+                <p class="text-muted mb-0">Latest monitoring system devices received from sensor readings.</p>
             </div>
         </div>
 

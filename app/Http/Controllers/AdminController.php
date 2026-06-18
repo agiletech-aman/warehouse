@@ -52,7 +52,7 @@ class AdminController extends Controller
         $totalWarehouses = Warehouse::count();
 
         // Active warehouses definition (as per requirement): warehouses that have any reading in last 24 hours.
-        // IoT store flow keeps device_id nullable, so infer activity from readings -> warehouse_code/warehouse.
+        // monitoring system store flow keeps device_id nullable, so infer activity from readings -> warehouse_code/warehouse.
         $activeWarehouses = Warehouse::query()
             ->where(function ($q) {
                 $q->whereExists(function ($sub) {

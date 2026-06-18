@@ -18,6 +18,72 @@
 
     <div class="row g-4">
 
+        <div style="
+background:#fff;
+border:1px solid #e5e7eb;
+border-radius:18px;
+padding:24px 28px;
+display:flex;
+justify-content:space-between;
+align-items:center;
+box-shadow:0 4px 12px rgba(0,0,0,.05);
+margin-bottom:24px;
+">
+
+            <div style="display:flex;align-items:center;gap:18px;">
+
+                <div style="
+        width:64px;
+        height:64px;
+        border-radius:50%;
+        background:#3b82f6;
+        color:#fff;
+        font-size:28px;
+        font-weight:700;
+        display:flex;
+        align-items:center;
+        justify-content:center;">
+                    {{ strtoupper(substr(session('admin_name'),0,1)) }}
+                </div>
+
+                <div>
+                    <div style="font-size:30px;font-weight:700;color:#111827;">
+                        {{ session('admin_name') }}
+                    </div>
+
+                    <div style="font-size:15px;color:#6b7280;margin-top:4px;">
+                        {{ session('admin_email') }}
+                    </div>
+                </div>
+
+            </div>
+
+            <div style="display:flex;gap:12px;align-items:center;">
+
+                <span style="
+        background:#dcfce7;
+        color:#15803d;
+        padding:8px 16px;
+        border-radius:999px;
+        font-size:14px;
+        font-weight:600;">
+                    ● Active
+                </span>
+
+                <span style="
+        background:#eff6ff;
+        color:#2563eb;
+        padding:8px 16px;
+        border-radius:999px;
+        font-size:14px;
+        font-weight:600;">
+                    Administrator
+                </span>
+
+            </div>
+
+        </div>
+
         {{-- Change Password --}}
         <div class="col-md-6" style="width:30%;">
             <div class="card border-0 shadow-sm p-4 h-100">

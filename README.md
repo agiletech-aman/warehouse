@@ -1,6 +1,6 @@
-# Warehouse IoT Admin (Laravel)
+# Warehouse monitoring system Admin (Laravel)
 
-Ye project **Warehouse IoT** ke liye admin dashboard provide karta hai. Admin login karke system ka overview dekh sakta hai: **Warehouses/Regions/Devices/Readings/Alerts** aur **Reports** (filters + server-side DataTables + PDF/Excel/CSV export) aur **Email routing settings**.
+Ye project **Warehouse monitoring system** ke liye admin dashboard provide karta hai. Admin login karke system ka overview dekh sakta hai: **Warehouses/Regions/Devices/Readings/Alerts** aur **Reports** (filters + server-side DataTables + PDF/Excel/CSV export) aur **Email routing settings**.
 
 ---
 
