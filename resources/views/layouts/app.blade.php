@@ -613,7 +613,7 @@
                         class="{{ request()->routeIs('readings.*') ? 'active' : '' }}">
                         <span class="icon">📈</span>
                         <span class="menu-text">Readings</span>
-                    </a>
+ </a>
                 </li>
 
                 <li>
