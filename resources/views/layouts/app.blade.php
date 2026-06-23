@@ -266,7 +266,7 @@
             height: 48px;
             min-width: 48px;
             border-radius: 50%;
-            background: #4389f9;
+            background: #848181;
             color: #fff;
             font-size: 20px;
             font-weight: 600;
@@ -551,25 +551,11 @@
             <div class="logo" style="display:flex;align-items:center;">
 
                 <div>
-                    <img src="{{ asset('8689634.png') }}"
+                    <img src="{{ asset('logo1.png') }}"
                         alt="Warehouse Monitoring system Logo"
-                        style="width:40px;height:40px;margin-right:10px;">
+                        style="width:200px;height:50px;margin-right:10px;">
                 </div>
 
-                <div class="logo-content" style="display:flex;flex-direction:column;line-height:1.2;">
-                    <span class="logo-text" style="font-size:18px;font-weight:700;">
-                        Warehouse
-                    </span>
-
-                    <span class="logo-text" style="
-            font-size:10px;
-            color:rgba(255,255,255,.6);
-            letter-spacing:2px;
-            
-        ">
-                        Monitoring system
-                    </span>
-</div>
 
             </div>
 
@@ -811,7 +797,7 @@
     ">
 
                 <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-                    <div>© {{ date('Y') }} Warehouse Monitoring system</div>
+                    <div>© {{ date('Y') }} Agiletech Solutions</div>
                     <div>All rights reserved.</div>
                 </div>
 

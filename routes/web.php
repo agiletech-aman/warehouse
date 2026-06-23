@@ -17,6 +17,7 @@ use App\Http\Controllers\GlobalSearchController;
 Route::get('/', [AdminController::class, 'showLogin'])->name('admin.login');
 Route::post('/', [AdminController::class, 'login'])->name('admin.login.post');
 
+Route::middleware('admin.auth')->group(function () {
 Route::get('/admin/dashboard', [AdminController::class, 'dashboard'])
     ->name('admin.dashboard');
 
@@ -161,3 +162,4 @@ Route::get('/hierarchy', function () {
 
     return view('hierarchy.index', compact('regions'));
 })->name('hierarchy.index');
+});
