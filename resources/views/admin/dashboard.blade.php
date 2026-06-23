@@ -107,7 +107,7 @@
                                     @if($reading->level === 'critical')
                                         <span class="badge bg-danger">Critical</span>
                                     @elseif($reading->level === 'severe')
-                                        <span class="badge bg-severe text-dark">Severe</span>
+                                        <span class="badge bg-warning text-dark">Severe</span>
                                     @else
                                         <span class="badge bg-success">Normal</span>
                                     @endif
@@ -122,7 +122,7 @@
                                         <span class="badge bg-light text-dark">{{ ucfirst($reading->status ?? 'Unknown') }}</span>
                                     @endif
                                 </td>
-                                <td>{{ $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i') : '-' }}</td>
+                                <td>{{ $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i:s') : '-' }}</td>
                             </tr>
                         @endforeach
                         </tbody>

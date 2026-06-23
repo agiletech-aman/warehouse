@@ -11,7 +11,10 @@ class ReadingController extends Controller
 {
     public function index()
     {
-        $readings = Reading::with('device')->latest()->paginate(10);
+        $readings = Reading::with('device')
+            ->latest('recorded_at')
+            ->latest('id')
+            ->paginate(10);
 
         return view('readings.index', compact('readings'));
     }

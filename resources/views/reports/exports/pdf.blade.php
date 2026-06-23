@@ -65,7 +65,7 @@
             <tr>
                 @foreach($selectedCols as $key)
                     @if($key === 'date_time')
-                        <td>{{ $row->recorded_at ? \Carbon\Carbon::parse($row->recorded_at)->format('d M Y H:i') : '-' }}</td>
+                        <td>{{ $row->recorded_at ? \Carbon\Carbon::parse($row->recorded_at)->format('d M Y H:i:s') : '-' }}</td>
                     @elseif($key === 'region')
                         <td>{{ $row->region ?: '-' }}</td>
                     @elseif($key === 'region_code')

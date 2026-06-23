@@ -131,7 +131,7 @@ class ReportController extends Controller
             ])
             ->map(function ($r) {
                 return [
-                    'date_time' => $r->recorded_at ? $r->recorded_at->format('d M Y H:i') : '-',
+                    'date_time' => $r->recorded_at ? $r->recorded_at->format('d M Y H:i:s') : '-',
                     'recorded_at_iso' => $r->recorded_at ? $r->recorded_at->toDateTimeString() : null,
                     'region' => $r->region ?: '-',
                     'region_code' => $r->region_code ?: '-',

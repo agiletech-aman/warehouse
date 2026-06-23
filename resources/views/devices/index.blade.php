@@ -66,10 +66,13 @@
                                 <span class="badge bg-light text-dark">{{ ucfirst($deviceStatus) }}</span>
                             @endif
 
-                            @if($device->level === 'critical')
+                            @php($deviceLevel = strtolower((string) ($device->level ?? 'normal')))
+                            @if($deviceLevel === 'critical')
                                 <span class="badge bg-danger">Critical</span>
-                            @elseif($device->level === 'severe')
-                                <span class="badge bg-severe text-dark">severe</span>
+                            @elseif($deviceLevel === 'severe')
+                                <span class="badge bg-warning text-dark">Severe</span>
+                            @else
+                                <span class="badge bg-success">Normal</span>
                             @endif
                         </td>
                     </tr>
@@ -90,14 +93,20 @@
         if (window.jQuery && $.fn.DataTable && $('#devicesTable').length) {
             $('#devicesTable').DataTable({
                 responsive: true,
-                pageLength: 10,
-                order: [[0, 'asc']],
+                paging: false,
+                info: false,
+                order: [],
                 language: {
-                    search: 'Search devices:',
-                    lengthMenu: 'Show _MENU_ entries'
+                    search: 'Search devices:'
                 }
             });
         }
+
+        window.setInterval(function () {
+            if (!document.hidden) {
+                window.location.reload();
+            }
+        }, 3000);
     });
 </script>
 @endsection

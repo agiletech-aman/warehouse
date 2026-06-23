@@ -18,6 +18,7 @@ class DeviceController extends Controller
 
         $devices = Reading::whereIn('id', $latestReadingIds)
             ->latest('recorded_at')
+            ->latest('id')
             ->paginate(10);
 
         return view('devices.index', compact('devices'));

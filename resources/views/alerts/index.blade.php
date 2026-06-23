@@ -42,7 +42,7 @@
                                 if (str_contains($alertType, 'critical') || str_contains($alertType, 'high') || $alertType === 'device_offline') {
                                     $alertClass = 'bg-danger';
                                 } elseif (str_contains($alertType, 'warn') || str_contains($alertType, 'severe')) {
-                                    $alertClass = 'bg-severe text-dark';
+                                    $alertClass = 'bg-warning text-dark';
                                 } else {
                                     $alertClass = 'bg-info text-dark';
                                 }
@@ -56,7 +56,7 @@
 
                         <td>{{ $alert->alert_value ?? $alert->reading?->reading_value ?? '-' }}</td>
 
-                        <td>{{ $alert->created_at ? $alert->created_at->format('d M Y H:i') : '-' }}</td>
+                        <td>{{ $alert->created_at ? $alert->created_at->format('d M Y H:i:s') : '-' }}</td>
 
                         <td>
                             @if($alert->last_email_at)
@@ -84,14 +84,20 @@
         if (window.jQuery && $.fn.DataTable && $('#alertsTable').length) {
             $('#alertsTable').DataTable({
                 responsive: true,
-                pageLength: 10,
-                order: [[0, 'asc']],
+                paging: false,
+                info: false,
+                order: [],
                 language: {
-                    search: 'Search alerts:',
-                    lengthMenu: 'Show _MENU_ entries'
+                    search: 'Search alerts:'
                 }
             });
         }
+
+        window.setInterval(function () {
+            if (!document.hidden) {
+                window.location.reload();
+            }
+        }, 3000);
     });
 </script>
 @endsection

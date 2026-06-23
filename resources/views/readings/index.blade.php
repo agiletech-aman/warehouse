@@ -49,7 +49,7 @@
                             @if($reading->level === 'critical')
                                 <span class="badge bg-danger">Critical</span>
                             @elseif($reading->level === 'severe')
-                                <span class="badge bg-severe text-dark">Severe</span>
+                                <span class="badge bg-warning text-dark">Severe</span>
                             @else
                                 <span class="badge bg-success">Normal</span>
                             @endif
@@ -63,7 +63,7 @@
                                 <span class="badge bg-light text-dark">{{ ucfirst($reading->status ?? 'Unknown') }}</span>
                             @endif
                         </td>
-                        <td>{{ $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i') : '-' }}</td>
+                        <td>{{ $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i:s') : '-' }}</td>
                       
                     </tr>
                 @endforeach
@@ -99,15 +99,21 @@
         if (window.jQuery && $.fn.DataTable && $('#readingsTable').length) {
             $('#readingsTable').DataTable({
                 responsive: true,
-                pageLength: 10,
-                order: [[7, 'desc']],
+                paging: false,
+                info: false,
+                order: [],
 
                 language: {
-                    search: 'Search readings:',
-                    lengthMenu: 'Show _MENU_ entries'
+                    search: 'Search readings:'
                 }
             });
         }
+
+        window.setInterval(function () {
+            if (!document.hidden) {
+                window.location.reload();
+            }
+        }, 3000);
     });
 </script>
 @endsection

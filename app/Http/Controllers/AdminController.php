@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Admin;
+use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
@@ -76,21 +77,20 @@ class AdminController extends Controller
 
         $totalRegions = Region::count();
 
-        // Device status from readings (latest status per sensor_device_id within last 24 hours)
-        $onlineDevices = \App\Models\Reading::query()
-            ->selectRaw('sensor_device_id')
+        // Count each sensor once, using the same latest reading shown on the Devices page.
+        $latestDeviceReadingIds = Reading::query()
+            ->selectRaw('MAX(id)')
             ->whereNotNull('sensor_device_id')
-            ->where('recorded_at', '>=', now()->subDay())
-            ->groupBy('sensor_device_id')
-            ->havingRaw("MAX(CASE WHEN LOWER(status) = 'online' THEN 1 ELSE 0 END) = 1")
+            ->groupBy('sensor_device_id');
+
+        $onlineDevices = Reading::query()
+            ->whereIn('id', clone $latestDeviceReadingIds)
+            ->whereRaw('LOWER(status) = ?', ['online'])
             ->count();
 
-        $offlineDevices = \App\Models\Reading::query()
-            ->selectRaw('sensor_device_id')
-            ->whereNotNull('sensor_device_id')
-            ->where('recorded_at', '>=', now()->subDay())
-            ->groupBy('sensor_device_id')
-            ->havingRaw("MAX(CASE WHEN LOWER(status) = 'offline' THEN 1 ELSE 0 END) = 1")
+        $offlineDevices = Reading::query()
+            ->whereIn('id', clone $latestDeviceReadingIds)
+            ->whereRaw('LOWER(status) = ?', ['offline'])
             ->count();
 
 

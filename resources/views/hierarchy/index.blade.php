@@ -259,7 +259,7 @@
                                                         @if($device->level === 'critical')
                                                             <span class="badge bg-danger">Critical</span>
                                                         @elseif($device->level === 'severe')
-                                                            <span class="badge bg-severe text-dark">severe</span>
+                                                            <span class="badge bg-warning text-dark">Severe</span>
                                                         @else
                                                             <span class="badge bg-success">Normal</span>
                                                         @endif
