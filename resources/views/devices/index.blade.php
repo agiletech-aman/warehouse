@@ -21,6 +21,32 @@
         <div class="alert alert-success rounded-3 shadow-sm">{{ session('success') }}</div>
         @endif
 
+        <div class="row g-4 mb-4">
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="text-muted small text-uppercase">Total Devices</div>
+                    <div class="display-6 fw-bold mt-2">{{ number_format($deviceCounts['total'] ?? 0) }}</div>
+                    <p class="text-muted mb-0">Latest devices from readings.</p>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="text-muted small text-uppercase">Online Devices</div>
+                    <div class="display-6 fw-bold mt-2">{{ number_format($deviceCounts['online'] ?? 0) }}</div>
+                    <p class="text-muted mb-0">Devices currently online.</p>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="text-muted small text-uppercase">Offline Devices</div>
+                    <div class="display-6 fw-bold mt-2">{{ number_format($deviceCounts['offline'] ?? 0) }}</div>
+                    <p class="text-muted mb-0">Devices currently offline.</p>
+                </div>
+            </div>
+        </div>
+
         <form method="GET" action="{{ route('devices.index') }}" class="row g-2 align-items-end mb-3">
             <div class="col-lg-5">
                 <label for="regionFilter" class="form-label mb-1">Region</label>

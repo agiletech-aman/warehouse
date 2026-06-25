@@ -65,6 +65,15 @@ class DeviceController extends Controller
         $devicesQuery = Reading::whereIn('id', $this->latestReadingIds());
         $this->applyReadingDeviceFilters($devicesQuery, $request);
 
+        $deviceCountsQuery = Reading::whereIn('id', $this->latestReadingIds());
+        $this->applyReadingDeviceFilters($deviceCountsQuery, $request);
+
+        $deviceCounts = [
+            'total' => (clone $deviceCountsQuery)->count(),
+            'online' => (clone $deviceCountsQuery)->where('status', 'online')->count(),
+            'offline' => (clone $deviceCountsQuery)->where('status', 'offline')->count(),
+        ];
+
         $devices = $devicesQuery
             ->latest('recorded_at')
             ->latest('id')
@@ -75,7 +84,8 @@ class DeviceController extends Controller
             'regions',
             'warehouses',
             'selectedRegion',
-            'selectedWarehouse'
+            'selectedWarehouse',
+            'deviceCounts'
         ));
     }
 
