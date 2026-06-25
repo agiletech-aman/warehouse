@@ -68,8 +68,7 @@ class DeviceController extends Controller
         $devices = $devicesQuery
             ->latest('recorded_at')
             ->latest('id')
-            ->paginate(10)
-            ->withQueryString();
+            ->get();
 
         return view('devices.index', compact(
             'devices',

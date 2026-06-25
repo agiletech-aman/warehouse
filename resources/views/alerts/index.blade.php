@@ -73,7 +73,6 @@
             </table>
         </div>
 
-        <div class="mt-3">{{ $alerts->links() }}</div>
     </div>
 </div>
 @endsection
@@ -81,17 +80,14 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        if (window.jQuery && $.fn.DataTable && $('#alertsTable').length) {
-            $('#alertsTable').DataTable({
-                responsive: true,
-                paging: false,
-                info: false,
-                order: [],
-                language: {
-                    search: 'Search alerts:'
-                }
-            });
-        }
+        window.initWarehouseDataTable('#alertsTable', {
+            paging: true,
+            info: true,
+            pageLength: 10,
+            language: {
+                search: 'Search alerts:'
+            }
+        });
 
         window.setInterval(function () {
             if (!document.hidden) {

@@ -17,6 +17,40 @@
             <div class="alert alert-success rounded-3 shadow-sm">{{ session('success') }}</div>
         @endif
 
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="text-muted small text-uppercase">Total Readings</div>
+                    <div class="display-6 fw-bold mt-2">{{ number_format($readingCounts['total'] ?? 0) }}</div>
+                    <p class="text-muted mb-0">All sensor readings.</p>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="text-muted small text-uppercase">Normal</div>
+                    <div class="display-6 fw-bold mt-2">{{ number_format($readingCounts['normal'] ?? 0) }}</div>
+                    <p class="text-muted mb-0">Normal level readings.</p>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="text-muted small text-uppercase">Severe</div>
+                    <div class="display-6 fw-bold mt-2">{{ number_format($readingCounts['severe'] ?? 0) }}</div>
+                    <p class="text-muted mb-0">Severe level readings.</p>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="text-muted small text-uppercase">Critical</div>
+                    <div class="display-6 fw-bold mt-2">{{ number_format($readingCounts['critical'] ?? 0) }}</div>
+                    <p class="text-muted mb-0">Critical level readings.</p>
+                </div>
+            </div>
+        </div>
+
         <div class="table-responsive">
             <table id="readingsTable" class="table table-hover align-middle mb-0">
                 <thead>
@@ -43,7 +77,7 @@
                         <td>{{ $reading->sensor_device_id }}</td>
                         <td>{{ $reading->reading_value }}</td>
                         <td>{{ $reading->unit }}</td>
-                        <td>{{ $reading->region_code ?? $reading->region }}{{ ($reading->warehouse_code ?? $reading->warehouse) ? ' / '.($reading->warehouse_code ?? $reading->warehouse) : '' }}</td>
+                        <td>{{ $reading->region ?? $reading->region_code }}{{ ($reading->warehouse ?? $reading->warehouse_code) ? ' / '.($reading->warehouse ?? $reading->warehouse_code) : '' }}</td>
                         <td>{{ $reading->godown }}{{ ($reading->compartment) ? ' / '.($reading->compartment) : '' }}</td>
                         <td>
                             @if($reading->level === 'critical')
@@ -71,7 +105,6 @@
             </table>
         </div>
 
-        <div class="mt-3">{{ $readings->links() }}</div>
     </div>
 </div>
 @endsection
@@ -90,24 +123,21 @@
     #readingsTable_wrapper .dataTables_filter {
         margin-bottom: 0;
     }
+
 </style>
 @endsection
 
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        if (window.jQuery && $.fn.DataTable && $('#readingsTable').length) {
-            $('#readingsTable').DataTable({
-                responsive: true,
-                paging: false,
-                info: false,
-                order: [],
-
-                language: {
-                    search: 'Search readings:'
-                }
-            });
-        }
+        window.initWarehouseDataTable('#readingsTable', {
+            paging: true,
+            info: true,
+            pageLength: 10,
+            language: {
+                search: 'Search readings:'
+            }
+        });
 
         window.setInterval(function () {
             if (!document.hidden) {

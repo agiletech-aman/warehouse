@@ -33,6 +33,12 @@
             </div>
         @endif
 
+        @if(session('error'))
+            <div class="alert alert-danger rounded-3 shadow-sm">
+                {{ session('error') }}
+            </div>
+        @endif
+
         <div class="table-responsive">
             <table id="warehousesTable" class="table table-hover align-middle mb-0">
                 <thead>
@@ -84,7 +90,10 @@
                                     Edit
                                 </a>
 
-                                <form action="{{ route('warehouses.destroy', $warehouse->id) }}" method="POST" class="d-inline">
+                                <form action="{{ route('warehouses.destroy', $warehouse->id) }}" method="POST" class="d-inline"
+                                      data-confirm-delete
+                                      data-confirm-title="Delete warehouse?"
+                                      data-confirm-message="Are you sure you want to delete {{ $warehouse->warehouse_name }}?">
                                     @csrf
                                     @method('DELETE')
                                     <button class="btn btn-danger btn-sm rounded-pill px-3">
@@ -99,10 +108,6 @@
             </table>
         </div>
 
-        <div class="mt-3">
-            {{ $warehouses->links() }}
-        </div>
-
     </div>
 
 </div>
@@ -113,18 +118,15 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        if (window.jQuery && $.fn.DataTable && $('#warehousesTable').length) {
-            $('#warehousesTable').DataTable({
-                responsive: true,
-                paging: false,
-                info: false,
-                searching: true,
-                order: [[0, 'asc']],
-                language: {
-                    search: 'Search warehouses:'
-                }
-            });
-        }
+        window.initWarehouseDataTable('#warehousesTable', {
+            paging: true,
+            info: true,
+            pageLength: 10,
+            order: [[0, 'asc']],
+            language: {
+                search: 'Search warehouses:'
+            }
+        });
     });
 </script>
 @endsection

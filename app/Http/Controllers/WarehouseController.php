@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Exports\WarehousesExport;
+use App\Models\Alert;
+use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
@@ -14,7 +16,7 @@ class WarehouseController extends Controller
     {
         $warehouses = Warehouse::with('region')
             ->latest()
-            ->paginate(10);
+            ->get();
 
 
         return view('warehouses.index', compact('warehouses'));
@@ -130,6 +132,22 @@ class WarehouseController extends Controller
 
     public function destroy(Warehouse $warehouse)
     {
+        $hasDevices = $warehouse->devices()->exists();
+        $hasReadings = Reading::where(function ($query) use ($warehouse) {
+            $query->where('warehouse_code', $warehouse->warehouse_code)
+                ->orWhere('warehouse', $warehouse->warehouse_name);
+        })->exists();
+        $hasAlerts = Alert::whereIn(
+            'device_id',
+            $warehouse->devices()->pluck('device_code')
+        )->exists();
+
+        if ($hasDevices || $hasReadings || $hasAlerts) {
+            return redirect()
+                ->route('warehouses.index')
+                ->with('error', 'Warehouse is in use and cannot be deleted.');
+        }
+
         $warehouse->delete();
 
         return redirect()

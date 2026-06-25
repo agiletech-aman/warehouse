@@ -11,12 +11,23 @@ class ReadingController extends Controller
 {
     public function index()
     {
+        $readingCounts = [
+            'total' => Reading::count(),
+            'normal' => Reading::where(function ($query) {
+                $query->where('level', 'normal')
+                    ->orWhereNull('level')
+                    ->orWhere('level', '');
+            })->count(),
+            'severe' => Reading::where('level', 'severe')->count(),
+            'critical' => Reading::where('level', 'critical')->count(),
+        ];
+
         $readings = Reading::with('device')
             ->latest('recorded_at')
             ->latest('id')
-            ->paginate(10);
+            ->get();
 
-        return view('readings.index', compact('readings'));
+        return view('readings.index', compact('readings', 'readingCounts'));
     }
 
     public function create()

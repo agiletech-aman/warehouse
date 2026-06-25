@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 class MarkStaleDevicesOffline extends Command
 {
     protected $signature = 'devices:mark-stale-offline
-                            {--minutes=30 : Minutes without a reading before a device is offline}
+                            {--minutes=60 : Minutes without a reading before a device is offline}
                             {--dry-run : Report stale devices without updating them}';
 
     protected $description = 'Mark devices offline when their latest reading is older than the configured cutoff';

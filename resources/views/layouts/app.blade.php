@@ -536,7 +536,10 @@
             padding-left: 0;
             padding-right: 0;
         }
+
     </style>
+
+    @yield('styles')
 </head>
 
 <body>
@@ -805,8 +808,24 @@
 
         </div>
 
+    </div>
 
-
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="deleteConfirmModalLabel">Confirm delete</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="deleteConfirmModalMessage">
+                    Are you sure you want to delete this item?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger rounded-pill px-4" id="deleteConfirmModalButton">Delete</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <link rel="stylesheet"
@@ -966,23 +985,68 @@
             const savedState = localStorage.getItem(STORAGE_KEY) === 'true';
             applySidebarState(savedState);
 
-            if (window.jQuery && $.fn.DataTable) {
-                if ($('#regionsTable').length) {
-                    $('#regionsTable').DataTable({
-                        responsive: true,
-                        paging: false,
-                        info: false,
-                        searching: true,
-                        order: [
-                            [0, 'asc']
-                        ],
-                        language: {
-                            search: 'Search regions:'
-                        }
-                    });
+            const deleteModalElement = document.getElementById('deleteConfirmModal');
+            const deleteModalTitle = document.getElementById('deleteConfirmModalLabel');
+            const deleteModalMessage = document.getElementById('deleteConfirmModalMessage');
+            const deleteModalButton = document.getElementById('deleteConfirmModalButton');
+            let pendingDeleteForm = null;
+
+            document.addEventListener('submit', function(event) {
+                const form = event.target;
+
+                if (!form.matches('form[data-confirm-delete]')) {
+                    return;
                 }
-            }
+
+                event.preventDefault();
+                pendingDeleteForm = form;
+                deleteModalTitle.textContent = form.dataset.confirmTitle || 'Confirm delete';
+                deleteModalMessage.textContent = form.dataset.confirmMessage || 'Are you sure you want to delete this item?';
+
+                bootstrap.Modal.getOrCreateInstance(deleteModalElement).show();
+            });
+
+            deleteModalButton.addEventListener('click', function() {
+                if (!pendingDeleteForm) return;
+
+                const form = pendingDeleteForm;
+                pendingDeleteForm = null;
+                bootstrap.Modal.getOrCreateInstance(deleteModalElement).hide();
+                form.submit();
+            });
         });
+
+        window.initWarehouseDataTable = function(selector, options) {
+            if (!window.jQuery || !$.fn.DataTable || !$(selector).length) {
+                return null;
+            }
+
+            const $table = $(selector);
+
+            if ($.fn.DataTable.isDataTable($table)) {
+                return $table.DataTable();
+            }
+
+            const userInitComplete = options && options.initComplete;
+            const settings = Object.assign({
+                responsive: true,
+                paging: false,
+                info: false,
+                searching: true,
+                order: [],
+                language: {
+                    search: 'Search:'
+                }
+            }, options || {});
+
+            settings.initComplete = function() {
+                if (typeof userInitComplete === 'function') {
+                    userInitComplete.call(this, settings);
+                }
+            };
+
+            return $table.DataTable(settings);
+        };
     </script>
 
     @yield('scripts')

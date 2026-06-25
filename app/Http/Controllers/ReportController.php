@@ -106,6 +106,7 @@ class ReportController extends Controller
         $filters = $this->extractFilters($request);
 
         $readingsBase = $this->buildReadingsQuery($filters);
+        $this->applyDataTableSearch($readingsBase, $request);
 
         $recordsTotal = Reading::query()->count();
         $recordsFiltered = (clone $readingsBase)->count();
@@ -302,6 +303,31 @@ class ReportController extends Controller
         }
 
         return $q;
+    }
+
+    private function applyDataTableSearch($query, Request $request): void
+    {
+        $value = trim((string) data_get($request->query('search', []), 'value', ''));
+
+        if ($value === '') {
+            return;
+        }
+
+        $query->where(function ($q) use ($value) {
+            $q->where('recorded_at', 'like', '%' . $value . '%')
+                ->orWhere('region', 'like', '%' . $value . '%')
+                ->orWhere('region_code', 'like', '%' . $value . '%')
+                ->orWhere('warehouse', 'like', '%' . $value . '%')
+                ->orWhere('warehouse_code', 'like', '%' . $value . '%')
+                ->orWhere('device_name', 'like', '%' . $value . '%')
+                ->orWhere('sensor_device_id', 'like', '%' . $value . '%')
+                ->orWhere('device_type', 'like', '%' . $value . '%')
+                ->orWhere('device_ip', 'like', '%' . $value . '%')
+                ->orWhere('reading_value', 'like', '%' . $value . '%')
+                ->orWhere('unit', 'like', '%' . $value . '%')
+                ->orWhere('level', 'like', '%' . $value . '%')
+                ->orWhere('status', 'like', '%' . $value . '%');
+        });
     }
 
     private function buildAlertsQuery(array $filters)

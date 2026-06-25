@@ -138,7 +138,6 @@
             </table>
         </div>
 
-        <div class="mt-3">{{ $devices->links() }}</div>
     </div>
 </div>
 
@@ -206,18 +205,15 @@
             });
         }
 
-        if (window.jQuery && $.fn.DataTable && $('#devicesTable').length) {
-            $('#devicesTable').DataTable({
-                responsive: true,
-                paging: false,
-                info: false,
-                searching: false,
-                order: [],
-                language: {
-                    search: 'Search devices:'
-                }
-            });
-        }
+        window.initWarehouseDataTable('#devicesTable', {
+            searching: true,
+            paging: true,
+            info: true,
+            pageLength: 10,
+            language: {
+                search: 'Search devices:'
+            }
+        });
 
         window.setInterval(function() {
             if (!document.hidden && !document.body.classList.contains('modal-open')) {

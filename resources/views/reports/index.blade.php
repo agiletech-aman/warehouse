@@ -533,14 +533,14 @@
 
     function initTable() {
 
-        table = new DataTable('#reportsTable', {
+        table = window.initWarehouseDataTable('#reportsTable', {
 
             processing: true,
             serverSide: true,
             scrollX: true,
             pageLength: 15,
 
-            dom: '<"top"B>rt<"bottom d-flex justify-content-between align-items-center"ip>',
+            dom: '<"top d-flex justify-content-between align-items-center flex-wrap gap-2"Bf>rt<"bottom d-flex justify-content-between align-items-center"ip>',
 
             buttons: [{
                 extend: 'colvis',

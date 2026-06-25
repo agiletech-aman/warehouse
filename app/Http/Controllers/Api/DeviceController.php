@@ -3,11 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Device;
+use App\Models\Reading;
+use App\Models\Region;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DeviceController extends Controller
 {
+    private function latestReadingIds()
+    {
+        return Reading::select(DB::raw('MAX(id) as id'))
+            ->whereNotNull('sensor_device_id')
+            ->groupBy('sensor_device_id');
+    }
+
     public function index(Request $request)
     {
         $perPage = (int) ($request->query('per_page', 10));
@@ -40,91 +50,147 @@ class DeviceController extends Controller
         $deviceCode = $request->query('device_code');
         $deviceName = $request->query('device_name');
 
-        $query = Device::query();
+        $query = Reading::query()
+            ->whereIn('id', $this->latestReadingIds());
 
         if ($status) {
-            $query->where('status', $status);
+            $statusMap = [
+                'active' => 'online',
+                'inactive' => 'offline',
+            ];
+
+            $query->where('status', $statusMap[$status] ?? $status);
         }
 
         if ($warehouseId) {
-            $query->where('warehouse_id', $warehouseId);
+            $warehouse = Warehouse::find($warehouseId);
+
+            if ($warehouse) {
+                $query->where(function ($q) use ($warehouse) {
+                    $q->where('warehouse_code', $warehouse->warehouse_code)
+                        ->orWhere('warehouse', $warehouse->warehouse_name);
+                });
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         if ($warehouseCode) {
-            $query->whereHas('warehouse', function ($q) use ($warehouseCode) {
-                $q->where('warehouse_code', $warehouseCode);
-            });
+            $query->where('warehouse_code', $warehouseCode);
         }
 
         if ($warehouseName) {
-            $query->whereHas('warehouse', function ($q) use ($warehouseName) {
-                $q->where('warehouse_name', $warehouseName);
-            });
+            $query->where('warehouse', $warehouseName);
         }
 
-        if ($regionId || $regionCode || $regionName) {
-            $query->whereHas('warehouse.region', function ($q) use ($regionId, $regionCode, $regionName) {
-                if ($regionId) {
-                    $q->where('id', $regionId);
-                }
-                if ($regionCode) {
-                    $q->where('region_code', $regionCode);
-                }
-                if ($regionName) {
-                    $q->where('region_name', $regionName);
-                }
-            });
+        if ($regionId) {
+            $region = Region::find($regionId);
+
+            if ($region) {
+                $query->where(function ($q) use ($region) {
+                    $q->where('region_code', $region->region_code)
+                        ->orWhere('region', $region->region_name);
+                });
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        }
+
+        if ($regionCode) {
+            $query->where('region_code', $regionCode);
+        }
+
+        if ($regionName) {
+            $query->where('region', $regionName);
         }
 
         if ($deviceCode) {
-            $query->where('device_code', $deviceCode);
+            $query->where('sensor_device_id', $deviceCode);
         }
 
         if ($deviceName) {
             $query->where('device_name', $deviceName);
         }
 
-        if ($includeWarehouse) {
-            $query->with([
-                'warehouse' => function ($q) {
-                    $q->select(['id', 'region_id', 'warehouse_code', 'warehouse_name', 'status']);
-                }
-            ]);
-        }
-
-        if ($includeRegion) {
-            $query->with([
-                'warehouse.region' => function ($q) {
-                    $q->select(['id', 'region_code', 'region_name', 'status']);
-                }
-            ]);
-        }
-
         $query->latest('id');
 
         $query->select([
             'id',
-            'warehouse_id',
-            'device_code',
+            'sensor_device_id',
             'device_name',
             'device_type',
-            'ip_address',
+            'device_ip',
+            'region',
+            'region_code',
+            'warehouse',
+            'warehouse_code',
+            'godown',
+            'compartment',
+            'reading_value',
+            'unit',
+            'level',
             'status',
+            'recorded_at',
             'created_at',
             'updated_at'
         ]);
 
-$devices = $query->paginate($perPage);
+        $devices = $query->paginate($perPage);
+        $devices->getCollection()->transform(function (Reading $reading) use ($includeWarehouse, $includeRegion) {
+            $row = [
+                'id' => $reading->id,
+                'reading_id' => $reading->id,
+                'warehouse_id' => null,
+                'device_code' => $reading->sensor_device_id,
+                'device_name' => $reading->device_name,
+                'device_type' => $reading->device_type,
+                'ip_address' => $reading->device_ip,
+                'device_ip' => $reading->device_ip,
+                'region' => $reading->region,
+                'region_code' => $reading->region_code,
+                'warehouse' => $reading->warehouse,
+                'warehouse_code' => $reading->warehouse_code,
+                'godown' => $reading->godown,
+                'compartment' => $reading->compartment,
+                'latest_reading' => $reading->reading_value,
+                'reading_value' => $reading->reading_value,
+                'unit' => $reading->unit,
+                'level' => $reading->level ?: 'normal',
+                'status' => $reading->status ?: 'offline',
+                'recorded_at' => $reading->recorded_at,
+                'created_at' => $reading->created_at,
+                'updated_at' => $reading->updated_at,
+            ];
 
-$activeCount = Device::where('status', 'active')->count();
-        $inactiveCount = Device::where('status', 'inactive')->count();
+            if ($includeWarehouse) {
+                $row['warehouse_data'] = [
+                    'warehouse_code' => $reading->warehouse_code,
+                    'warehouse_name' => $reading->warehouse,
+                ];
+            }
+
+            if ($includeRegion) {
+                $row['region_data'] = [
+                    'region_code' => $reading->region_code,
+                    'region_name' => $reading->region,
+                ];
+            }
+
+            return $row;
+        });
+
+        $latestDevices = Reading::query()->whereIn('id', $this->latestReadingIds());
+        $activeCount = (clone $latestDevices)->where('status', 'online')->count();
+        $inactiveCount = (clone $latestDevices)->where('status', 'offline')->count();
 
         return response()->json([
             'success' => true,
-            'message' => 'Devices fetched successfully',
+            'message' => 'Devices fetched successfully from readings',
             'count' => $devices->total(),
             'active' => $activeCount,
             'inactive' => $inactiveCount,
+            'online' => $activeCount,
+            'offline' => $inactiveCount,
             'data' => $devices,
         ]);
     }

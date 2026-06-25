@@ -34,6 +34,12 @@
             </div>
         @endif
 
+        @if(session('error'))
+            <div class="alert alert-danger rounded-3 shadow-sm">
+                {{ session('error') }}
+            </div>
+        @endif
+
         <div class="table-responsive">
             <table id="regionsTable" class="table table-hover align-middle mb-0">
 
@@ -89,6 +95,9 @@
 
     <form action="{{ route('regions.destroy',$region->id) }}"
           method="POST"
+          data-confirm-delete
+          data-confirm-title="Delete region?"
+          data-confirm-message="Are you sure you want to delete {{ $region->region_name }}?"
           class="d-inline">
 
 @csrf
@@ -112,13 +121,24 @@
 </table>
         </div>
 
-        <div class="mt-3">
-            {{ $regions->links() }}
-        </div>
-
-
     </div>
 
 </div>
 
+@endsection
+
+@section('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        window.initWarehouseDataTable('#regionsTable', {
+            paging: true,
+            info: true,
+            pageLength: 10,
+            order: [[0, 'asc']],
+            language: {
+                search: 'Search regions:'
+            }
+        });
+    });
+</script>
 @endsection

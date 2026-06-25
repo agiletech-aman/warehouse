@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\RegionsExport;
+use App\Models\Reading;
 use App\Models\Region;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
@@ -11,7 +12,7 @@ class RegionController extends Controller
 {
     public function index()
     {
-        $regions = Region::latest()->paginate(10);
+        $regions = Region::latest()->get();
 
         return view('regions.index', compact('regions'));
     }
@@ -91,6 +92,18 @@ class RegionController extends Controller
 
     public function destroy(Region $region)
     {
+        $hasWarehouses = $region->warehouses()->exists();
+        $hasReadings = Reading::where(function ($query) use ($region) {
+            $query->where('region_code', $region->region_code)
+                ->orWhere('region', $region->region_name);
+        })->exists();
+
+        if ($hasWarehouses || $hasReadings) {
+            return redirect()
+                ->route('regions.index')
+                ->with('error', 'Region is in use and cannot be deleted.');
+        }
+
         $region->delete();
 
         return redirect()

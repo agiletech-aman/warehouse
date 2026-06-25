@@ -14,7 +14,7 @@ class AlertController extends Controller
         $alerts = Alert::with(['device', 'reading'])
             ->latest('created_at')
             ->latest('id')
-            ->paginate(10);
+            ->get();
 
         return view('alerts.index', compact('alerts'));
     }
