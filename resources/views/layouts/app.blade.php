@@ -38,7 +38,7 @@
             height: 100vh;
             background: #0f172a;
             transition: .25s ease;
-            z-index: 1100;
+            z-index: 1040;
             box-shadow: 10px 0 30px rgba(2, 6, 23, 0.25);
             border-right: 1px solid rgba(255, 255, 255, .06);
             display: flex;
@@ -150,7 +150,7 @@
             margin-left: 0;
             padding-left: 250px;
             position: relative;
-            z-index: 101;
+            z-index: auto;
             width: 100%;
             min-height: 100vh;
             transition: .3s;
