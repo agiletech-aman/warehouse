@@ -16,9 +16,15 @@
                 <p class="text-muted mb-0">Manage warehouse regions and update their status quickly.</p>
             </div>
 
-            <a href="{{ route('regions.create') }}" class="btn btn-primary btn-sm rounded-pill px-3">
-                + Add Region
-            </a>
+            <div class="d-flex gap-2">
+                <a href="{{ route('regions.export') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                    Export
+                </a>
+
+                <a href="{{ route('regions.create') }}" class="btn btn-primary btn-sm rounded-pill px-3">
+                    + Add Region
+                </a>
+            </div>
 
         </div>
 

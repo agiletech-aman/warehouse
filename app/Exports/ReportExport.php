@@ -10,8 +10,14 @@ use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithColumnWidths;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 
-class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWidths, ShouldAutoSize
+class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWidths, ShouldAutoSize, WithEvents
 {
     public function __construct(private array $filters = [])
     {
@@ -109,6 +115,104 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
             'L' => 12,
             'M' => 12,
         ];
+    }
+
+    public function registerEvents(): array
+    {
+        return [
+            AfterSheet::class => function (AfterSheet $event) {
+                $this->styleSheet($event);
+            },
+        ];
+    }
+
+    private function styleSheet(AfterSheet $event): void
+    {
+        $sheet = $event->sheet->getDelegate();
+        $highestRow = $sheet->getHighestRow();
+        $highestColumn = $sheet->getHighestColumn();
+
+        $sheet->freezePane('A2');
+        $sheet->setAutoFilter("A1:{$highestColumn}{$highestRow}");
+
+        $sheet->getStyle("A1:{$highestColumn}1")->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1D4ED8']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+
+        $sheet->getStyle("A1:{$highestColumn}{$highestRow}")->applyFromArray([
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => 'D1D5DB'],
+                ],
+            ],
+            'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+        ]);
+
+        $headings = $this->headings();
+        $levelColumn = $this->columnForHeading($headings, 'Level');
+        $statusColumn = $this->columnForHeading($headings, 'Status');
+
+        for ($row = 2; $row <= $highestRow; $row++) {
+            if ($row % 2 === 0) {
+                $sheet->getStyle("A{$row}:{$highestColumn}{$row}")
+                    ->getFill()
+                    ->setFillType(Fill::FILL_SOLID)
+                    ->getStartColor()
+                    ->setRGB('F8FAFC');
+            }
+
+            if ($levelColumn) {
+                $this->styleLevelCell($sheet, "{$levelColumn}{$row}");
+            }
+
+            if ($statusColumn) {
+                $this->styleStatusCell($sheet, "{$statusColumn}{$row}");
+            }
+        }
+    }
+
+    private function columnForHeading(array $headings, string $heading): ?string
+    {
+        $index = array_search($heading, $headings, true);
+
+        if ($index === false) {
+            return null;
+        }
+
+        return Coordinate::stringFromColumnIndex($index + 1);
+    }
+
+    private function styleLevelCell($sheet, string $cell): void
+    {
+        $level = strtolower((string) $sheet->getCell($cell)->getValue());
+        $colors = match ($level) {
+            'critical' => ['fill' => 'FEE2E2', 'font' => '991B1B'],
+            'severe' => ['fill' => 'FEF3C7', 'font' => '92400E'],
+            default => ['fill' => 'DCFCE7', 'font' => '166534'],
+        };
+
+        $sheet->getStyle($cell)->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => $colors['font']]],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $colors['fill']]],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+    }
+
+    private function styleStatusCell($sheet, string $cell): void
+    {
+        $status = strtolower((string) $sheet->getCell($cell)->getValue());
+        $colors = $status === 'online' || $status === 'active'
+            ? ['fill' => 'DCFCE7', 'font' => '166534']
+            : ['fill' => 'E5E7EB', 'font' => '374151'];
+
+        $sheet->getStyle($cell)->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => $colors['font']]],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $colors['fill']]],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
     }
 
     public function query()

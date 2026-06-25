@@ -6,6 +6,38 @@
 
 @section('content')
 
+<style>
+    .modal-backdrop {
+        z-index: 1290 !important;
+    }
+
+    .modal {
+        z-index: 1300 !important;
+    }
+
+    #emailRoutingModal .modal-dialog {
+        max-width: min(920px, calc(100vw - 48px)) !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    #emailRoutingModal .modal-body {
+        overflow-x: auto;
+    }
+
+    #emailRoutingModal table {
+        min-width: 620px;
+    }
+
+    @media (max-width: 767.98px) {
+        #emailRoutingModal .modal-dialog {
+            max-width: calc(100vw - 24px);
+            margin-left: 12px;
+            margin-right: 12px;
+        }
+    }
+</style>
+
 <div class="content-shell">
 
     @if(session('success'))
@@ -280,7 +312,7 @@ margin-bottom:24px;
                     <div class="row g-4">
 
                         <!-- CO2 Section -->
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <div class="text-center mb-3">
                                 <span class="badge bg-info fs-5 px-4 py-2">CO2</span>
                             </div>
@@ -345,7 +377,7 @@ margin-bottom:24px;
                         </div>
 
                         <!-- PH3 Section -->
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <div class="text-center mb-3">
                                 <span class="badge bg-warning text-dark fs-5 px-4 py-2">PH3</span>
                             </div>
@@ -446,6 +478,15 @@ margin-bottom:24px;
 </div>
 
 <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        ['emailRoutingModal', 'editCcEmailModal'].forEach(function(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal && modal.parentElement !== document.body) {
+                document.body.appendChild(modal);
+            }
+        });
+    });
+
     document.querySelector('#emailRoutingModal form')
         .addEventListener('submit', function(e) {
 

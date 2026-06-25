@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\WarehousesExport;
 use App\Models\Region;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Maatwebsite\Excel\Facades\Excel;
 
 class WarehouseController extends Controller
 {
@@ -16,6 +18,14 @@ class WarehouseController extends Controller
 
 
         return view('warehouses.index', compact('warehouses'));
+    }
+
+    public function export()
+    {
+        return Excel::download(
+            new WarehousesExport(),
+            'warehouses-' . now()->format('Y-m-d-His') . '.xlsx'
+        );
     }
 
     public function create()

@@ -15,9 +15,15 @@
                 <p class="text-muted mb-0">Track all warehouse details.</p>
             </div>
 
-            <a href="{{ route('warehouses.create') }}" class="btn btn-primary rounded-pill px-3">
-                + Add Warehouse
-            </a>
+            <div class="d-flex gap-2">
+                <a href="{{ route('warehouses.export') }}" class="btn btn-outline-primary rounded-pill px-3">
+                    Export
+                </a>
+
+                <a href="{{ route('warehouses.create') }}" class="btn btn-primary rounded-pill px-3">
+                    + Add Warehouse
+                </a>
+            </div>
 
         </div>
 

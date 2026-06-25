@@ -30,8 +30,13 @@ Route::get('/admin/settings', [AdminController::class, 'settings'])
 Route::post('/admin/change-password', [AdminController::class, 'changePassword'])
     ->name('admin.change-password');
 
+Route::get('/regions/export', [RegionController::class, 'export'])->name('regions.export');
+Route::get('/warehouses/export', [WarehouseController::class, 'export'])->name('warehouses.export');
 Route::resource('regions', RegionController::class);
 Route::resource('warehouses', WarehouseController::class);
+Route::delete('/devices/reading/{reading}', [DeviceController::class, 'destroyReadingDevice'])
+    ->name('devices.reading-destroy');
+Route::get('/devices/export', [DeviceController::class, 'export'])->name('devices.export');
 Route::resource('devices', DeviceController::class);
 Route::resource('readings', ReadingController::class);
 Route::resource('alerts', AlertController::class);

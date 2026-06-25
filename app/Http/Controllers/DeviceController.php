@@ -2,26 +2,90 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\DevicesExport;
 use App\Models\Device;
 use App\Models\Reading;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Maatwebsite\Excel\Facades\Excel;
 
 class DeviceController extends Controller
 {
-    public function index()
+    private function latestReadingIds()
     {
-        $latestReadingIds = Reading::select(DB::raw('MAX(id) as id'))
+        return Reading::select(DB::raw('MAX(id) as id'))
             ->whereNotNull('sensor_device_id')
             ->groupBy('sensor_device_id');
+    }
 
-        $devices = Reading::whereIn('id', $latestReadingIds)
+    private function applyReadingDeviceFilters($query, Request $request)
+    {
+        $selectedRegion = trim((string) $request->query('region_code', ''));
+        $selectedWarehouse = trim((string) $request->query('warehouse_code', ''));
+
+        if ($selectedRegion !== '') {
+            $query->where(function ($query) use ($selectedRegion) {
+                $query->where('region_code', $selectedRegion)
+                    ->orWhere('region', $selectedRegion);
+            });
+        }
+
+        if ($selectedWarehouse !== '') {
+            $query->where(function ($query) use ($selectedWarehouse) {
+                $query->where('warehouse_code', $selectedWarehouse)
+                    ->orWhere('warehouse', $selectedWarehouse);
+            });
+        }
+
+        return [$selectedRegion, $selectedWarehouse];
+    }
+
+    public function index(Request $request)
+    {
+        $selectedRegion = trim((string) $request->query('region_code', ''));
+        $selectedWarehouse = trim((string) $request->query('warehouse_code', ''));
+
+        $regions = Reading::whereIn('id', $this->latestReadingIds())
+            ->select('region_code', 'region')
+            ->orderBy('region')
+            ->get()
+            ->filter(fn ($region) => $region->region_code || $region->region)
+            ->unique(fn ($region) => $region->region_code ?: $region->region)
+            ->values();
+
+        $warehouses = Reading::whereIn('id', $this->latestReadingIds())
+            ->select('warehouse_code', 'warehouse')
+            ->orderBy('warehouse')
+            ->get()
+            ->filter(fn ($warehouse) => $warehouse->warehouse_code || $warehouse->warehouse)
+            ->unique(fn ($warehouse) => $warehouse->warehouse_code ?: $warehouse->warehouse)
+            ->values();
+
+        $devicesQuery = Reading::whereIn('id', $this->latestReadingIds());
+        $this->applyReadingDeviceFilters($devicesQuery, $request);
+
+        $devices = $devicesQuery
             ->latest('recorded_at')
             ->latest('id')
-            ->paginate(10);
+            ->paginate(10)
+            ->withQueryString();
 
-        return view('devices.index', compact('devices'));
+        return view('devices.index', compact(
+            'devices',
+            'regions',
+            'warehouses',
+            'selectedRegion',
+            'selectedWarehouse'
+        ));
+    }
+
+    public function export(Request $request)
+    {
+        return Excel::download(
+            new DevicesExport($request->only(['region_code', 'warehouse_code'])),
+            'devices-' . now()->format('Y-m-d-His') . '.xlsx'
+        );
     }
 
     public function create()
@@ -120,5 +184,18 @@ class DeviceController extends Controller
         $device->delete();
 
         return redirect()->route('devices.index')->with('success', 'Device deleted successfully.');
+    }
+
+    public function destroyReadingDevice(Reading $reading)
+    {
+        $deletedReadings = Reading::where(function ($query) use ($reading) {
+            if ($reading->sensor_device_id) {
+                $query->where('sensor_device_id', $reading->sensor_device_id);
+            } else {
+                $query->where('id', $reading->id);
+            }
+        })->delete();
+
+        return redirect()->back()->with('success', $deletedReadings . ' reading(s) deleted successfully.');
     }
 }

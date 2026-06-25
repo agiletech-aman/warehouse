@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\RegionsExport;
 use App\Models\Region;
 use Illuminate\Http\Request;
+use Maatwebsite\Excel\Facades\Excel;
 
 class RegionController extends Controller
 {
@@ -12,6 +14,14 @@ class RegionController extends Controller
         $regions = Region::latest()->paginate(10);
 
         return view('regions.index', compact('regions'));
+    }
+
+    public function export()
+    {
+        return Excel::download(
+            new RegionsExport(),
+            'regions-' . now()->format('Y-m-d-His') . '.xlsx'
+        );
     }
 
     public function create()

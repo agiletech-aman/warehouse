@@ -113,7 +113,7 @@
             if (!document.hidden) {
                 window.location.reload();
             }
-        }, 3000);
+        }, 30000);
     });
 </script>
 @endsection
