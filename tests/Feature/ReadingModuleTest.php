@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Alert;
+use App\Models\Admin;
 use App\Models\Region;
 use App\Models\Reading;
 use App\Models\Warehouse;
@@ -16,13 +17,51 @@ class ReadingModuleTest extends TestCase
 
     public function test_reading_module_routes_are_available(): void
     {
-        $this->get('/readings')
+        $admin = Admin::factory()->create();
+        $session = [
+            'admin_id' => $admin->id,
+            'admin_name' => $admin->name,
+            'admin_email' => $admin->email,
+        ];
+
+        $this->withSession($session)->get('/readings')
             ->assertStatus(200)
             ->assertSee('Readings');
 
-        $this->get('/readings/create')
+        $this->withSession($session)->get('/readings/create')
             ->assertStatus(200)
             ->assertSee('Add Reading');
+    }
+
+    public function test_readings_data_endpoint_returns_only_requested_page(): void
+    {
+        $admin = Admin::factory()->create();
+
+        foreach (range(1, 3) as $index) {
+            Reading::create([
+                'sensor_device_id' => 'SENSOR-' . $index,
+                'device_name' => 'Device ' . $index,
+                'device_type' => 'Temperature',
+                'reading_value' => 20 + $index,
+                'unit' => 'C',
+                'region' => 'North',
+                'warehouse' => 'Warehouse ' . $index,
+                'level' => 'normal',
+                'status' => 'online',
+                'recorded_at' => now()->subMinutes($index),
+            ]);
+        }
+
+        $this->withSession([
+            'admin_id' => $admin->id,
+            'admin_name' => $admin->name,
+            'admin_email' => $admin->email,
+        ])->getJson('/readings/data?draw=7&start=0&length=2')
+            ->assertOk()
+            ->assertJsonPath('draw', 7)
+            ->assertJsonPath('recordsTotal', 3)
+            ->assertJsonPath('recordsFiltered', 3)
+            ->assertJsonCount(2, 'data');
     }
 
     public function test_sensor_reading_sends_alert_by_warehouse(): void

@@ -38,6 +38,7 @@ Route::delete('/devices/reading/{reading}', [DeviceController::class, 'destroyRe
     ->name('devices.reading-destroy');
 Route::get('/devices/export', [DeviceController::class, 'export'])->name('devices.export');
 Route::resource('devices', DeviceController::class);
+Route::get('/readings/data', [ReadingController::class, 'data'])->name('readings.data');
 Route::resource('readings', ReadingController::class);
 Route::resource('alerts', AlertController::class);
 

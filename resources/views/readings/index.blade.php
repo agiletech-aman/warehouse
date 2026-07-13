@@ -69,39 +69,7 @@
                     
                 </tr>
                 </thead>
-                <tbody>
-                @foreach($readings as $reading)
-                    <tr>
-                        <td>{{ $reading->device_name ?? optional($reading->device)->device_name }}</td>
-                        <td>{{ $reading->device_type }}</td>
-                        <td>{{ $reading->sensor_device_id }}</td>
-                        <td>{{ $reading->reading_value }}</td>
-                        <td>{{ $reading->unit }}</td>
-                        <td>{{ $reading->region ?? $reading->region_code }}{{ ($reading->warehouse ?? $reading->warehouse_code) ? ' / '.($reading->warehouse ?? $reading->warehouse_code) : '' }}</td>
-                        <td>{{ $reading->godown }}{{ ($reading->compartment) ? ' / '.($reading->compartment) : '' }}</td>
-                        <td>
-                            @if($reading->level === 'critical')
-                                <span class="badge bg-danger">Critical</span>
-                            @elseif($reading->level === 'severe')
-                                <span class="badge bg-warning text-dark">Severe</span>
-                            @else
-                                <span class="badge bg-success">Normal</span>
-                            @endif
-                        </td>
-                        <td>
-                            @if($reading->status === 'offline')
-                                <span class="badge bg-secondary">Offline</span>
-                            @elseif($reading->status === 'online')
-                                <span class="badge bg-success">Online</span>
-                            @else
-                                <span class="badge bg-light text-dark">{{ ucfirst($reading->status ?? 'Unknown') }}</span>
-                            @endif
-                        </td>
-                        <td>{{ $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i:s') : '-' }}</td>
-                      
-                    </tr>
-                @endforeach
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
 
@@ -130,13 +98,67 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const escapeText = function (value) {
+            return $('<div>').text(value || '-').html();
+        };
+
         window.initWarehouseDataTable('#readingsTable', {
+            processing: true,
+            serverSide: true,
             paging: true,
             info: true,
             pageLength: 10,
+            order: [],
             language: {
                 search: 'Search readings:'
-            }
+            },
+            ajax: {
+                url: '{{ route('readings.data') }}'
+            },
+            columns: [
+                { data: 'device', defaultContent: '-', render: escapeText },
+                { data: 'type', defaultContent: '-', render: escapeText },
+                { data: 'sensor', defaultContent: '-', render: escapeText },
+                { data: 'value', defaultContent: '-', render: escapeText },
+                { data: 'unit', defaultContent: '-', render: escapeText },
+                { data: 'region_warehouse', defaultContent: '-', render: escapeText },
+                { data: 'godown_compartment', defaultContent: '-', render: escapeText },
+                {
+                    data: 'level',
+                    defaultContent: 'normal',
+                    render: function (value) {
+                        const level = String(value || 'normal').toLowerCase();
+
+                        if (level === 'critical') {
+                            return '<span class="badge bg-danger">Critical</span>';
+                        }
+
+                        if (level === 'severe') {
+                            return '<span class="badge bg-warning text-dark">Severe</span>';
+                        }
+
+                        return '<span class="badge bg-success">Normal</span>';
+                    }
+                },
+                {
+                    data: 'status',
+                    defaultContent: 'unknown',
+                    render: function (value) {
+                        const status = String(value || 'unknown').toLowerCase();
+
+                        if (status === 'offline') {
+                            return '<span class="badge bg-secondary">Offline</span>';
+                        }
+
+                        if (status === 'online') {
+                            return '<span class="badge bg-success">Online</span>';
+                        }
+
+                        return '<span class="badge bg-light text-dark">' + escapeText(status.charAt(0).toUpperCase() + status.slice(1)) + '</span>';
+                    }
+                },
+                { data: 'recorded_at', defaultContent: '-', render: escapeText }
+            ]
         });
 
         window.setInterval(function () {

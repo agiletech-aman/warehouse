@@ -93,6 +93,8 @@
                         <thead>
                         <tr>
                             <th>Device</th>
+                            <th>Region</th>
+                            <th>Warehouse</th>
                             <th>Level</th>
                             <th>Value</th>
                             <th>Status</th>
@@ -103,6 +105,18 @@
                         @foreach($latestReadings as $reading)
                             <tr>
                                 <td>{{ $reading->device_name ?? optional($reading->device)->device_name ?? $reading->sensor_device_id }}</td>
+                                <td>
+                                    {{ $reading->region ?: ($reading->region_code ?: '-') }}
+                                    @if($reading->region_code)
+                                        <span class="text-muted">({{ $reading->region_code }})</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    {{ $reading->warehouse ?: ($reading->warehouse_code ?: '-') }}
+                                    @if($reading->warehouse_code)
+                                        <span class="text-muted">({{ $reading->warehouse_code }})</span>
+                                    @endif
+                                </td>
                                 <td>
                                     @if($reading->level === 'critical')
                                         <span class="badge bg-danger">Critical</span>
