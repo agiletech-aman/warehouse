@@ -18,15 +18,14 @@ class WarehouseController extends Controller
             ->latest()
             ->get();
 
-
         return view('warehouses.index', compact('warehouses'));
     }
 
     public function export()
     {
         return Excel::download(
-            new WarehousesExport(),
-            'warehouses-' . now()->format('Y-m-d-His') . '.xlsx'
+            new WarehousesExport,
+            'warehouses-'.now()->format('Y-m-d-His').'.xlsx'
         );
     }
 
@@ -95,7 +94,7 @@ class WarehouseController extends Controller
     {
         $request->validate([
             'region_id' => 'required|exists:regions,id',
-            'warehouse_code' => 'required|unique:warehouses,warehouse_code,' . $warehouse->id . '|max:20',
+            'warehouse_code' => 'required|unique:warehouses,warehouse_code,'.$warehouse->id.'|max:20',
             'warehouse_name' => 'required|string|max:150',
             'manager_name' => 'required|string|max:100',
             'manager_email' => 'nullable|email|max:100',
