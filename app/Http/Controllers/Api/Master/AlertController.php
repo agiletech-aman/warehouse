@@ -15,13 +15,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AlertController extends Controller
 {
-    private const DEVICE_CO2 = 30001;
+    private const DEVICE_CO2 = 30000;
 
-    private const DEVICE_PH3 = 30002;
+    private const DEVICE_PH3 = 30001;
 
     public function alertsApi(Request $request, MasterAlertService $alertService): JsonResponse
     {
-        $response = $this->getAlerts($request, $alertService);
+        $response = $this->getAlerts($request, $alertService, null, true);
 
         return response()->json([
             'totalCount' => $response['totalCount'],
@@ -220,10 +220,12 @@ class AlertController extends Controller
     private function getAlerts(
         Request $request,
         MasterAlertService $alertService,
-        ?int $customPageSize = null
+        ?int $customPageSize = null,
+        bool $allDeviceTypes = false,
+        bool $allRecords = false
     ): array {
-        $deviceTypeId = $this->deviceTypeId($request);
-        $page = max(1, (int) $request->get('page', 1));
+        $deviceTypeId = $allDeviceTypes ? null : $this->deviceTypeId($request);
+        $page = max(1, (int) $request->get('pageNumber', $request->get('page', 1)));
         $pageSize = $customPageSize ?? max(1, min((int) $request->get('pageSize', 20), 500));
 
         $response = $alertService->fetchAlerts([
@@ -237,6 +239,7 @@ class AlertController extends Controller
             'fromDate' => $request->get('fromDate'),
             'toDate' => $request->get('toDate'),
             'showNormal' => $request->boolean('showNormal') ? 1 : null,
+            'allRecords' => $allRecords,
         ]);
 
         $warehouseNames = $this->accessibleWarehouseNames();
@@ -248,9 +251,11 @@ class AlertController extends Controller
         }
 
         $response['deviceTypeId'] = $deviceTypeId;
-        $response['gasType'] = $deviceTypeId === self::DEVICE_PH3 ? 'PH3' : 'CO2';
-        $response['pageNumber'] = $page;
-        $response['pageSize'] = $pageSize;
+        $response['gasType'] = $deviceTypeId === null
+            ? 'ALL'
+            : ($deviceTypeId === self::DEVICE_PH3 ? 'PH3' : 'CO2');
+        $response['pageNumber'] = $allRecords ? 1 : $page;
+        $response['pageSize'] = $allRecords ? $response['totalCount'] : $pageSize;
 
         return $response;
     }

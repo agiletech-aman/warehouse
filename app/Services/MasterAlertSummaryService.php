@@ -10,13 +10,14 @@ class MasterAlertSummaryService
 {
     public function fetchDashboard(array $filters): array
     {
-        $base = Reading::query();
+        $base = Reading::query()
+            ->whereRaw('LOWER(device_type) IN (?, ?)', ['co2', 'ph3']);
         $this->applyFilters($base, $filters);
 
         $latestReadingIds = (clone $base)
             ->whereNotNull('sensor_device_id')
             ->selectRaw('MAX(id)')
-            ->groupBy('sensor_device_id');
+            ->groupBy('sensor_device_id', 'device_type');
 
         $latestDevices = Reading::query()
             ->whereIn('id', $latestReadingIds)
@@ -29,7 +30,7 @@ class MasterAlertSummaryService
             ]);
 
         $levelCounts = (clone $base)
-            ->selectRaw('region, warehouse, LOWER(device_type) as gas, LOWER(level) as severity, COUNT(*) as aggregate')
+            ->selectRaw("region, warehouse, LOWER(device_type) as gas, CASE WHEN LOWER(COALESCE(level, '')) IN ('severe', 'critical') THEN LOWER(level) ELSE 'normal' END as severity, COUNT(*) as aggregate")
             ->groupBy('region', 'warehouse', 'gas', 'severity')
             ->get();
 
@@ -75,8 +76,13 @@ class MasterAlertSummaryService
 
     private function liveOverall($latestDevices, $levelCounts): array
     {
+        $totalSensorsCO2 = $this->deviceTypeCount($latestDevices, 'co2');
+        $totalSensorsPH3 = $this->deviceTypeCount($latestDevices, 'ph3');
+
         return [
-            'totalIotDevices' => $latestDevices->count(),
+            'totalIotDevices' => $totalSensorsCO2 + $totalSensorsPH3,
+            'totalSensorsCO2' => $totalSensorsCO2,
+            'totalSensorsPH3' => $totalSensorsPH3,
             'totalOnlineCO2' => $this->deviceStatusCount($latestDevices, 'co2', 'online'),
             'totalOfflineCO2' => $this->deviceStatusCount($latestDevices, 'co2', 'offline'),
             'totalOnlinePH3' => $this->deviceStatusCount($latestDevices, 'ph3', 'online'),
@@ -113,6 +119,7 @@ class MasterAlertSummaryService
             $locations[$key]['totalIotDevices']++;
 
             $gas = strtoupper(strtolower((string) $device->device_type));
+            $locations[$key]["totalSensors{$gas}"]++;
             $status = strtolower((string) $device->status) === 'online' ? 'online' : 'offline';
             $field = $status.$gas;
 
@@ -131,6 +138,8 @@ class MasterAlertSummaryService
         $locations[$key] ??= [
             'state' => $state,
             'totalIotDevices' => 0,
+            'totalSensorsCO2' => 0,
+            'totalSensorsPH3' => 0,
             'onlineCO2' => 0,
             'offlineCO2' => 0,
             'onlinePH3' => 0,
@@ -149,6 +158,13 @@ class MasterAlertSummaryService
     {
         return $devices->filter(fn (Reading $reading) => strtolower((string) $reading->device_type) === $gas
             && (strtolower((string) $reading->status) === 'online' ? 'online' : 'offline') === $status)->count();
+    }
+
+    private function deviceTypeCount($devices, string $gas): int
+    {
+        return $devices->filter(
+            fn (Reading $reading) => strtolower((string) $reading->device_type) === $gas
+        )->count();
     }
 
     private function levelCount($counts, string $gas, string $severity): int
