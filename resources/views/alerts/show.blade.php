@@ -11,7 +11,13 @@
             <div class="row g-3">
                 <div class="col-md-6"><div class="fw-semibold">Device</div><div>{{ optional($alert->device)->device_name ?: ($alert->reading?->device_name ?: $alert->device_id) }}</div></div>
                 <div class="col-md-6"><div class="fw-semibold">Alert Type</div><div>{{ str_replace('_', ' ', ucfirst($alert->alert_type)) }}</div></div>
-                <div class="col-md-6"><div class="fw-semibold">Alert Value</div><div>{{ $alert->alert_value }}</div></div>
+                <div class="col-md-6"><div class="fw-semibold">Alert Value</div><div>
+                    @if(str_contains(strtolower((string) ($alert->message ?? $alert->alert_type)), 'offline'))
+                        N/A
+                    @else
+                        {{ $alert->alert_value ?? 'N/A' }}
+                    @endif
+                </div></div>
                 <div class="col-md-6"><div class="fw-semibold">Reading</div><div>{{ $alert->reading_id ? 'Reading #' . $alert->reading_id : '-' }}</div></div>
             </div>
 

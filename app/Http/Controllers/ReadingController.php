@@ -75,7 +75,7 @@ class ReadingController extends Controller
                         $reading->warehouse ?: $reading->warehouse_code
                     ),
                     'godown_compartment' => $this->joinLocationParts($reading->godown, $reading->compartment),
-                    'level' => $reading->level ?: 'normal',
+                    'level' => $reading->reading_value === null ? 'unknown' : ($reading->level ?: 'normal'),
                     'status' => $reading->status ?: 'unknown',
                     'recorded_at' => $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i:s') : '-',
                 ];
@@ -98,6 +98,17 @@ class ReadingController extends Controller
         return view('readings.create', compact('devices'));
     }
 
+    public function store(Request $request)
+    {
+        $validated = $this->validateReading($request);
+        $validated = $this->addDeviceSnapshot($validated);
+        $validated['recorded_at'] ??= now();
+
+        Reading::create($validated);
+
+        return redirect()->route('readings.index')->with('success', 'Reading created successfully.');
+    }
+
     public function show(Reading $reading)
     {
         $reading->load('device');
@@ -114,21 +125,8 @@ class ReadingController extends Controller
 
     public function update(Request $request, Reading $reading)
     {
-        $request->validate([
-            'device_id' => 'required|exists:devices,id',
-            'reading_value' => 'required|numeric',
-            'unit' => 'required|string|max:20',
-            'status' => 'required|in:normal,severe,critical',
-            'recorded_at' => 'nullable|date',
-        ]);
-
-        $reading->update($request->only([
-            'device_id',
-            'reading_value',
-            'unit',
-            'status',
-            'recorded_at',
-        ]));
+        $validated = $this->validateReading($request);
+        $reading->update($this->addDeviceSnapshot($validated));
 
         return redirect()->route('readings.index')->with('success', 'Reading updated successfully.');
     }
@@ -164,6 +162,42 @@ class ReadingController extends Controller
                 ->orWhere('level', 'like', '%' . $value . '%')
                 ->orWhere('status', 'like', '%' . $value . '%');
         });
+    }
+
+    private function validateReading(Request $request): array
+    {
+        return $request->validate([
+            'device_id' => 'nullable|exists:devices,id',
+            'sensor_device_id' => 'required|string|max:100',
+            'reading_value' => 'nullable|numeric',
+            'unit' => 'nullable|string|max:20',
+            'level' => 'nullable|in:normal,severe,critical',
+            'status' => 'required|in:online,offline',
+            'recorded_at' => 'nullable|date',
+        ]);
+    }
+
+    private function addDeviceSnapshot(array $data): array
+    {
+        if (empty($data['device_id'])) {
+            return $data;
+        }
+
+        $device = Device::with('warehouse.region')->find($data['device_id']);
+        if (!$device) {
+            return $data;
+        }
+
+        $data['sensor_device_id'] = $data['sensor_device_id'] ?: $device->device_code;
+        $data['device_name'] = $device->device_name;
+        $data['device_type'] = $device->device_type;
+        $data['device_ip'] = $device->ip_address;
+        $data['warehouse'] = $device->warehouse?->warehouse_name;
+        $data['warehouse_code'] = $device->warehouse?->warehouse_code;
+        $data['region'] = $device->warehouse?->region?->region_name;
+        $data['region_code'] = $device->warehouse?->region?->region_code;
+
+        return $data;
     }
 
     private function joinLocationParts(?string $first, ?string $second): string

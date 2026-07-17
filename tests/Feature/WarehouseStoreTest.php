@@ -11,9 +11,10 @@ class WarehouseStoreTest extends TestCase
 
     public function test_warehouse_can_be_created_with_blank_manager_email(): void
     {
+        $session = $this->adminSession();
         $region = \App\Models\Region::factory()->create();
 
-        $response = $this->post('/warehouses', [
+        $response = $this->withSession($session)->post('/warehouses', [
             'region_id' => $region->id,
             'warehouse_code' => 'WH-TEST-1',
             'warehouse_name' => 'Main Warehouse',

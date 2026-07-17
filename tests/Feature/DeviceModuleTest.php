@@ -14,17 +14,21 @@ class DeviceModuleTest extends TestCase
 
     public function test_device_module_routes_are_available(): void
     {
-        $this->get('/devices')
+        $session = $this->adminSession();
+
+        $this->withSession($session)->get('/devices')
             ->assertStatus(200)
             ->assertSee('Devices');
 
-        $this->get('/devices/create')
+        $this->withSession($session)->get('/devices/create')
             ->assertStatus(200)
             ->assertSee('Add Device');
     }
 
     public function test_devices_and_hierarchy_are_listed_from_readings(): void
     {
+        $session = $this->adminSession();
+
         Reading::create([
             'key' => 'test-key',
             'sensor_device_id' => 'TEMP_192_168_1_101_1',
@@ -45,13 +49,13 @@ class DeviceModuleTest extends TestCase
             'recorded_at' => now(),
         ]);
 
-        $this->get('/devices')
+        $this->withSession($session)->get('/devices')
             ->assertStatus(200)
             ->assertSee('TEMP_192_168_1_101_1')
             ->assertSee('Warehouse A')
             ->assertSee('RE-MUM');
 
-        $this->get('/hierarchy')
+        $this->withSession($session)->get('/hierarchy')
             ->assertStatus(200)
             ->assertSee('MUMBAI')
             ->assertSee('Warehouse A')
@@ -60,6 +64,8 @@ class DeviceModuleTest extends TestCase
 
     public function test_hierarchy_shows_regions_and_warehouses_without_devices(): void
     {
+        $session = $this->adminSession();
+
         $region = Region::create([
             'region_code' => 'RE-DEL',
             'region_name' => 'DELHI',
@@ -76,7 +82,7 @@ class DeviceModuleTest extends TestCase
             'status' => 'active',
         ]);
 
-        $this->get('/hierarchy')
+        $this->withSession($session)->get('/hierarchy')
             ->assertStatus(200)
             ->assertSee('DELHI')
             ->assertSee('Delhi Warehouse')

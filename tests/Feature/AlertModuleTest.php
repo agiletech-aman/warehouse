@@ -11,11 +11,13 @@ class AlertModuleTest extends TestCase
 
     public function test_alert_module_routes_are_available(): void
     {
-        $this->get('/alerts')
+        $session = $this->adminSession();
+
+        $this->withSession($session)->get('/alerts')
             ->assertStatus(200)
             ->assertSee('Alerts');
 
-        $this->get('/alerts/create')
+        $this->withSession($session)->get('/alerts/create')
             ->assertStatus(200)
             ->assertSee('Add Alert');
     }

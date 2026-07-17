@@ -78,10 +78,7 @@ class AdminController extends Controller
         $totalRegions = Region::count();
 
         // Count each sensor once, using the same latest reading shown on the Devices page.
-        $latestDeviceReadingIds = Reading::query()
-            ->selectRaw('MAX(id)')
-            ->whereNotNull('sensor_device_id')
-            ->groupBy('sensor_device_id');
+        $latestDeviceReadingIds = Reading::latestIdsPerSensor();
 
         $onlineDevices = Reading::query()
             ->whereIn('id', clone $latestDeviceReadingIds)

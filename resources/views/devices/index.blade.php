@@ -12,7 +12,7 @@
                 <p class="text-muted mb-0">Latest monitoring system devices received from sensor readings.</p>
             </div>
 
-            <a href="{{ route('devices.export', request()->only(['region_code', 'warehouse_code'])) }}" class="btn btn-outline-primary rounded-pill px-3">
+            <a id="devicesExport" href="{{ route('devices.export', request()->only(['region_code', 'warehouse_code', 'status', 'search'])) }}" class="btn btn-outline-primary rounded-pill px-3">
                 Export
             </a>
         </div>
@@ -48,7 +48,7 @@
         </div>
 
         <form method="GET" action="{{ route('devices.index') }}" class="row g-2 align-items-end mb-3">
-            <div class="col-lg-5">
+            <div class="col-lg-4">
                 <label for="regionFilter" class="form-label mb-1">Region</label>
                 <select id="regionFilter" name="region_code" class="form-select">
                     <option value="">All Regions</option>
@@ -64,7 +64,7 @@
                 </select>
             </div>
 
-            <div class="col-lg-5">
+            <div class="col-lg-4">
                 <label for="warehouseFilter" class="form-label mb-1">Warehouse</label>
                 <select id="warehouseFilter" name="warehouse_code" class="form-select">
                     <option value="">All Warehouses</option>
@@ -77,6 +77,15 @@
                         @endif
                     </option>
                     @endforeach
+                </select>
+            </div>
+
+            <div class="col-lg-2">
+                <label for="statusFilter" class="form-label mb-1">Status</label>
+                <select id="statusFilter" name="status" class="form-select">
+                    <option value="">All Status</option>
+                    <option value="online" @selected($selectedStatus === 'online')>Online</option>
+                    <option value="offline" @selected($selectedStatus === 'offline')>Offline</option>
                 </select>
             </div>
 
@@ -121,12 +130,17 @@
                         </td>
                         <td>{{ $readingDevice->device_type ?: '-' }}</td>
                         <td>{{ $readingDevice->godown ?: '-' }}{{ $readingDevice->compartment ? ' / '.$readingDevice->compartment : '' }}</td>
-                        <td>
-                            {{ $readingDevice->reading_value ?? '-' }}
-                            @if($readingDevice->unit)
-                            {{ $readingDevice->unit }}
-                            @endif
-                        </td>
+                       <td>
+    @if($readingDevice->reading_value !== null && $readingDevice->reading_value !== '')
+        {{ $readingDevice->reading_value }}
+
+        @if($readingDevice->unit)
+            {{ $readingDevice->unit }}
+        @endif
+    @else
+        N/A
+    @endif
+</td>
                         <td>
                             @php($deviceStatus = $readingDevice->status ?? 'offline')
                             @if($deviceStatus === 'online')
@@ -137,11 +151,15 @@
                             <span class="badge bg-light text-dark">{{ ucfirst($deviceStatus) }}</span>
                             @endif
 
-                            @php($deviceLevel = strtolower((string) ($readingDevice->level ?? 'normal')))
+                            @php($deviceLevel = ($readingDevice->reading_value === null || $readingDevice->reading_value === '')
+                                ? 'unknown'
+                                : strtolower((string) ($readingDevice->level ?? 'normal')))
                             @if($deviceLevel === 'critical')
                             <span class="badge bg-danger">Critical</span>
                             @elseif($deviceLevel === 'severe')
                             <span class="badge bg-warning text-dark">Severe</span>
+                            @elseif($deviceLevel === 'unknown')
+                            <span class="badge bg-secondary">Unknown</span>
                             @else
                             <span class="badge bg-success">Normal</span>
                             @endif
@@ -231,21 +249,24 @@
             });
         }
 
-        window.initWarehouseDataTable('#devicesTable', {
+        const table = window.initWarehouseDataTable('#devicesTable', {
             searching: true,
             paging: true,
             info: true,
             pageLength: 10,
+            search: { search: new URLSearchParams(window.location.search).get('search') || '' },
             language: {
                 search: 'Search devices:'
             }
         });
 
-        window.setInterval(function() {
-            if (!document.hidden && !document.body.classList.contains('modal-open')) {
-                window.location.reload();
-            }
-        }, 30000);
+        table.on('search.dt', function () {
+            const url = new URL(document.getElementById('devicesExport').href);
+            const search = table.search();
+            search ? url.searchParams.set('search', search) : url.searchParams.delete('search');
+            document.getElementById('devicesExport').href = url.toString();
+        });
+
     });
 </script>
 @endsection

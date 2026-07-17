@@ -16,7 +16,7 @@
             </div>
 
             <div class="d-flex gap-2">
-                <a href="{{ route('warehouses.export') }}" class="btn btn-outline-primary rounded-pill px-3">
+                <a id="warehousesExport" href="{{ route('warehouses.export', request()->only('search')) }}" class="btn btn-outline-primary rounded-pill px-3">
                     Export
                 </a>
 
@@ -118,14 +118,22 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        window.initWarehouseDataTable('#warehousesTable', {
+        const table = window.initWarehouseDataTable('#warehousesTable', {
             paging: true,
             info: true,
             pageLength: 10,
+            search: { search: new URLSearchParams(window.location.search).get('search') || '' },
             order: [[0, 'asc']],
             language: {
                 search: 'Search warehouses:'
             }
+        });
+
+        table.on('search.dt', function () {
+            const url = new URL(document.getElementById('warehousesExport').href);
+            const search = table.search();
+            search ? url.searchParams.set('search', search) : url.searchParams.delete('search');
+            document.getElementById('warehousesExport').href = url.toString();
         });
     });
 </script>

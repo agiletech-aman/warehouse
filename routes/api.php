@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AlertController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\Master\AlertController as MasterAlertController;
 use App\Http\Controllers\Api\Master\RegionController as MasterRegionController;
@@ -9,6 +10,8 @@ use App\Http\Controllers\Api\ReadingController;
 use App\Http\Controllers\Api\RegionController;
 use App\Http\Controllers\Api\WarehouseController;
 use Illuminate\Support\Facades\Route;
+
+Route::post('/login', [AuthController::class, 'login']);
 
 Route::post('/readings', [ReadingController::class, 'store']);
 

@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Models\Alert;
 use App\Models\Reading;
 use Carbon\Carbon;
 
@@ -75,7 +76,7 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
         $selected = $this->selectedColumns();
 
         $values = [
-            'date_time' => $row->recorded_at ? Carbon::parse($row->recorded_at)->format('d M Y H:i') : null,
+            'date_time' => $row->recorded_at ? Carbon::parse($row->recorded_at)->format('d M Y H:i') : '-',
             'region' => $row->region ?: '-',
             'region_code' => $row->region_code ?: '-',
             'warehouse' => $row->warehouse ?: '-',
@@ -84,17 +85,15 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
             'device_code' => $row->sensor_device_id ?: '-',
             'device_type' => $row->device_type ?: '-',
             'device_ip' => $row->device_ip ?: '-',
-            'value' => $row->reading_value,
+            'value' => $row->reading_value ?? 'N/A',
             'unit' => $row->unit ?: '-',
-            'level' => $row->level ?: 'normal',
+            'level' => $row->reading_value === null ? 'unknown' : ($row->level ?: 'normal'),
             'status' => $row->status ?: 'offline',
         ];
 
-        return array_values(array_filter(array_map(function ($key) use ($values) {
-            return $values[$key] ?? null;
-        }, $selected), function ($v) {
-            return $v !== null;
-        }));
+        return array_values(array_map(function ($key) use ($values) {
+            return $values[$key] ?? '-';
+        }, $selected));
     }
 
 
@@ -191,6 +190,7 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
         $colors = match ($level) {
             'critical' => ['fill' => 'FEE2E2', 'font' => '991B1B'],
             'severe' => ['fill' => 'FEF3C7', 'font' => '92400E'],
+            'unknown' => ['fill' => 'E5E7EB', 'font' => '374151'],
             default => ['fill' => 'DCFCE7', 'font' => '166534'],
         };
 
@@ -262,12 +262,16 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
 
         // Report type adjustments: filter only; keep unified structure.
         $reportType = strtolower((string) ($this->filters['report_type'] ?? 'reading'));
-        if ($reportType === 'offline_device') {
+        if ($reportType === 'alert') {
+            $q->whereIn('id', $this->alertReadingIds());
+        } elseif ($reportType === 'offline_device') {
             $q->where('status', 'offline');
         } elseif ($reportType === 'severe_alert') {
-            $q->where('level', 'severe');
+            $q->where('level', 'severe')
+                ->whereIn('id', $this->alertReadingIds('severe'));
         } elseif ($reportType === 'critical_alert') {
-            $q->where('level', 'critical');
+            $q->where('level', 'critical')
+                ->whereIn('id', $this->alertReadingIds('critical'));
         }
 
         return $q
@@ -287,6 +291,32 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
                 'level',
                 'status',
             ]);
+    }
+
+    private function alertReadingIds(?string $type = null)
+    {
+        $alerts = Alert::query()
+            ->whereNotNull('reading_id')
+            ->select('reading_id')
+            ->distinct();
+
+        if (!empty($this->filters['from_date'])) {
+            $alerts->where('created_at', '>=', Carbon::parse($this->filters['from_date'])->format('Y-m-d') . ' 00:00:00');
+        }
+
+        if (!empty($this->filters['to_date'])) {
+            $alerts->where('created_at', '<=', Carbon::parse($this->filters['to_date'])->format('Y-m-d') . ' 23:59:59');
+        }
+
+        if ($type !== null) {
+            $alerts->where('type', $type);
+        }
+
+        if (!empty($this->filters['device_code'])) {
+            $alerts->where('device_id', $this->filters['device_code']);
+        }
+
+        return $alerts;
     }
 }
 

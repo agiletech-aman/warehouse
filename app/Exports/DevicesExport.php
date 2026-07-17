@@ -3,7 +3,6 @@
 namespace App\Exports;
 
 use App\Models\Reading;
-use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
@@ -28,6 +27,7 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
 
         $selectedRegion = trim((string) ($this->filters['region_code'] ?? ''));
         $selectedWarehouse = trim((string) ($this->filters['warehouse_code'] ?? ''));
+        $selectedStatus = strtolower(trim((string) ($this->filters['status'] ?? '')));
 
         if ($selectedRegion !== '') {
             $query->where(function ($query) use ($selectedRegion) {
@@ -40,6 +40,28 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
             $query->where(function ($query) use ($selectedWarehouse) {
                 $query->where('warehouse_code', $selectedWarehouse)
                     ->orWhere('warehouse', $selectedWarehouse);
+            });
+        }
+
+        if (in_array($selectedStatus, ['online', 'offline'], true)) {
+            $query->where('status', $selectedStatus);
+        }
+
+        $search = trim((string) ($this->filters['search'] ?? ''));
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $query->where(function ($query) use ($like) {
+                $query->where('sensor_device_id', 'like', $like)
+                    ->orWhere('device_name', 'like', $like)
+                    ->orWhere('region', 'like', $like)
+                    ->orWhere('region_code', 'like', $like)
+                    ->orWhere('warehouse', 'like', $like)
+                    ->orWhere('warehouse_code', 'like', $like)
+                    ->orWhere('device_type', 'like', $like)
+                    ->orWhere('godown', 'like', $like)
+                    ->orWhere('compartment', 'like', $like)
+                    ->orWhere('level', 'like', $like)
+                    ->orWhere('status', 'like', $like);
             });
         }
 
@@ -67,6 +89,8 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
 
     public function map($reading): array
     {
+        $hasReadingValue = $reading->reading_value !== null && $reading->reading_value !== '';
+
         return [
             $reading->sensor_device_id ?: '-',
             $reading->device_name ?: '-',
@@ -76,9 +100,9 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
             $reading->warehouse_code ?: '-',
             $reading->device_type ?: '-',
             trim(($reading->godown ?: '-') . ($reading->compartment ? ' / ' . $reading->compartment : '')),
-            $reading->reading_value,
+            $hasReadingValue ? $reading->reading_value : 'N/A',
             $reading->unit ?: '-',
-            ucfirst((string) ($reading->level ?: 'normal')),
+            $hasReadingValue ? ucfirst((string) ($reading->level ?: 'normal')) : 'Unknown',
             ucfirst((string) ($reading->status ?: 'offline')),
             optional($reading->recorded_at)->format('Y-m-d H:i:s') ?: '-',
         ];
@@ -95,9 +119,7 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
 
     private function latestReadingIds()
     {
-        return Reading::select(DB::raw('MAX(id) as id'))
-            ->whereNotNull('sensor_device_id')
-            ->groupBy('sensor_device_id');
+        return Reading::latestIdsPerSensor();
     }
 
     private function styleSheet(AfterSheet $event): void
@@ -145,6 +167,7 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
         $colors = match ($level) {
             'critical' => ['fill' => 'FEE2E2', 'font' => '991B1B'],
             'severe' => ['fill' => 'FEF3C7', 'font' => '92400E'],
+            'unknown' => ['fill' => 'E5E7EB', 'font' => '374151'],
             default => ['fill' => 'DCFCE7', 'font' => '166534'],
         };
 

@@ -18,6 +18,7 @@ class Warehouse extends Model
         'warehouse_name',
         'manager_name',
         'manager_email',
+        'password',
         'manager_phone',
         'address',
         'city',
@@ -27,6 +28,17 @@ class Warehouse extends Model
         'longitude',
         'status',
     ];
+
+    protected $hidden = [
+        'password',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'password' => 'hashed',
+        ];
+    }
 
     protected static function booted(): void
     {

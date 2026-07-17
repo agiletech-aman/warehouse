@@ -17,7 +17,7 @@
             </div>
 
             <div class="d-flex gap-2">
-                <a href="{{ route('regions.export') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                <a id="regionsExport" href="{{ route('regions.export', request()->only('search')) }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
                     Export
                 </a>
 
@@ -130,14 +130,22 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        window.initWarehouseDataTable('#regionsTable', {
+        const table = window.initWarehouseDataTable('#regionsTable', {
             paging: true,
             info: true,
             pageLength: 10,
+            search: { search: new URLSearchParams(window.location.search).get('search') || '' },
             order: [[0, 'asc']],
             language: {
                 search: 'Search regions:'
             }
+        });
+
+        table.on('search.dt', function () {
+            const url = new URL(document.getElementById('regionsExport').href);
+            const search = table.search();
+            search ? url.searchParams.set('search', search) : url.searchParams.delete('search');
+            document.getElementById('regionsExport').href = url.toString();
         });
     });
 </script>

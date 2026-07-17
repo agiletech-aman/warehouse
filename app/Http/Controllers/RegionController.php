@@ -17,10 +17,10 @@ class RegionController extends Controller
         return view('regions.index', compact('regions'));
     }
 
-    public function export()
+    public function export(Request $request)
     {
         return Excel::download(
-            new RegionsExport(),
+            new RegionsExport(trim((string) $request->query('search', ''))),
             'regions-' . now()->format('Y-m-d-His') . '.xlsx'
         );
     }

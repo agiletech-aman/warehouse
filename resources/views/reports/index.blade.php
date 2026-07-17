@@ -351,6 +351,11 @@
     const routeExportCsv = '{{ route("reports.export",["format"=>"csv"]) }}';
 
     let table = null;
+    const reportColumnKeys = [
+        'date_time', 'region', 'region_code', 'warehouse', 'warehouse_code',
+        'device_name', 'device_code', 'device_type', 'device_ip', 'value',
+        'unit', 'level', 'status'
+    ];
 
 
     /* ---------------- FILTERS ---------------- */
@@ -373,7 +378,19 @@
 
     function buildExportLinks() {
 
-        const query = getFilters().toString();
+        const params = getFilters();
+
+        if (table) {
+            const visibleColumns = table.columns().visible().toArray()
+                .map((visible, index) => visible ? reportColumnKeys[index] : null)
+                .filter(Boolean);
+
+            if (visibleColumns.length) {
+                params.set('selected_cols', visibleColumns.join(','));
+            }
+        }
+
+        const query = params.toString();
 
         document.getElementById('export_pdf').href =
             routeExportPdf + '?' + query;
@@ -503,29 +520,19 @@
 
         if (!payload.success) return;
 
-        document.getElementById('stat_total_readings').innerHTML =
-            payload.stats.total_readings || 0;
+        const setStat = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = value ?? 0;
+        };
 
-        document.getElementById('stat_total_devices').innerHTML =
-            payload.stats.total_devices || 0;
-
-        document.getElementById('stat_online_devices').innerHTML =
-            payload.stats.online_devices || 0;
-
-        document.getElementById('stat_offline_devices').innerHTML =
-            payload.stats.offline_devices || 0;
-
-        document.getElementById('stat_severe_alerts').innerHTML =
-            payload.stats.severe_alerts || 0;
-
-        document.getElementById('stat_critical_alerts').innerHTML =
-            payload.stats.critical_alerts || 0;
-
-        document.getElementById('stat_regions_count').innerHTML =
-            payload.stats.regions_count || 0;
-
-        document.getElementById('stat_warehouses_count').innerHTML =
-            payload.stats.warehouses_count || 0;
+        setStat('stat_total_readings', payload.stats.total_readings);
+        setStat('stat_total_devices', payload.stats.total_devices);
+        setStat('stat_online_devices', payload.stats.online_devices);
+        setStat('stat_offline_devices', payload.stats.offline_devices);
+        setStat('stat_severe_alerts', payload.stats.severe_alerts);
+        setStat('stat_critical_alerts', payload.stats.critical_alerts);
+        setStat('stat_regions_count', payload.stats.regions_count);
+        setStat('stat_warehouses_count', payload.stats.warehouses_count);
     }
 
 
@@ -537,10 +544,14 @@
 
             processing: true,
             serverSide: true,
+            paging: true,
+            info: true,
+            lengthChange: true,
             scrollX: true,
-            pageLength: 15,
+            pageLength: 10,
+            lengthMenu: [10, 25, 50, 100],
 
-            dom: '<"top d-flex justify-content-between align-items-center flex-wrap gap-2"Bf>rt<"bottom d-flex justify-content-between align-items-center"ip>',
+            dom: '<"top d-flex justify-content-between align-items-center flex-wrap gap-2"lBf>rt<"bottom d-flex justify-content-between align-items-center"ip>',
 
             buttons: [{
                 extend: 'colvis',
@@ -600,7 +611,7 @@
                 },
                 {
                     data: 'value',
-                    defaultContent: ''
+                    defaultContent: 'N/A'
                 },
                 {
                     data: 'unit',
@@ -608,25 +619,28 @@
                 },
 
                 {
-                    data: 'level',
-                    defaultContent: '',
-                    render: function(d) {
+    data: 'level',
+    defaultContent: 'unknown',
+    render: function (d) {
+        const level = String(d || 'unknown').toLowerCase();
 
-                        if (!d) return '-';
+        let cls = 'bg-secondary';
+        let label = 'Unknown';
 
-                        let cls = 'bg-success';
+        if (level === 'normal') {
+            cls = 'bg-success';
+            label = 'Normal';
+        } else if (level === 'severe') {
+            cls = 'bg-warning text-dark';
+            label = 'Severe';
+        } else if (level === 'critical') {
+            cls = 'bg-danger';
+            label = 'Critical';
+        }
 
-                        if (d === 'severe')
-                            cls = 'bg-warning text-dark';
-
-                        if (d === 'critical')
-                            cls = 'bg-danger';
-
-                        return `<span class="badge ${cls}">
-                        ${d}
-                    </span>`;
-                    }
-                },
+        return `<span class="badge ${cls}">${label}</span>`;
+    }
+},
 
                 {
                     data: 'status',
@@ -652,6 +666,8 @@
         table.buttons()
             .container()
             .appendTo('#colvisContainer');
+
+        table.on('column-visibility.dt', buildExportLinks);
     }
 
 

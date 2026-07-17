@@ -4,10 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Exports\ReportExport;
 use App\Models\Alert;
-use App\Models\Device;
 use App\Models\Reading;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
 
@@ -26,39 +26,22 @@ class ReportController extends Controller
 
         $totalReadings = (clone $readingsBase)->count();
 
-        // Devices counts (best-effort from readings)
-        $devicesQuery = Device::query();
-        if (!empty($filters['device_type'])) {
-            $devicesQuery->where('device_type', $filters['device_type']);
-        }
-
-        // Apply region/warehouse constraints if provided
-        $this->applyRegionWarehouseToDevices($devicesQuery, $filters);
-
-        if (!empty($filters['status'])) {
-            // status here is online/offline; map to devices.status active/inactive isn't consistent.
-            // We'll map online->active and offline->inactive as a reasonable proxy.
-            $map = [
-                'online' => 'active',
-                'offline' => 'inactive',
-            ];
-            $devicesStatus = $map[$filters['status']] ?? null;
-            if ($devicesStatus) {
-                $devicesQuery->where('status', $devicesStatus);
-            }
-        }
+        // Keep counts consistent with the Devices page: one latest reading per sensor.
+        $devicesQuery = (clone $readingsBase)
+            ->whereNotNull('sensor_device_id')
+            ->whereIn('id', $this->latestDeviceReadingIds());
 
         $totalDevices = (clone $devicesQuery)->count();
-        $onlineDevices = (clone $devicesQuery)->where('status', 'active')->count();
-        $offlineDevices = (clone $devicesQuery)->where('status', 'inactive')->count();
+        $onlineDevices = (clone $devicesQuery)->where('status', 'online')->count();
+        $offlineDevices = (clone $devicesQuery)->where('status', 'offline')->count();
 
         $regionsCount = !empty($filters['region_code']) || !empty($filters['region_name'])
             ? 1
-            : (clone $readingsBase)->distinct('region_code')->count();
+            : $this->distinctLocationCount($readingsBase, 'region_code', 'region');
 
         $warehousesCount = !empty($filters['warehouse_code']) || !empty($filters['warehouse_name'])
             ? 1
-            : (clone $readingsBase)->distinct('warehouse_code')->count();
+            : $this->distinctLocationCount($readingsBase, 'warehouse_code', 'warehouse');
 
         // Severe/Critical alerts counts: prefer Alert.type filters within date range.
         $alertsBase = $this->buildAlertsQuery($filters);
@@ -144,7 +127,7 @@ class ReportController extends Controller
                     'device_ip' => $r->device_ip ?: '-',
                     'value' => $r->reading_value,
                     'unit' => $r->unit ?: '-',
-                    'level' => $r->level ?: 'normal',
+                    'level' => $r->reading_value === null ? 'unknown' : ($r->level ?: 'normal'),
                     'status' => $r->status ?: 'offline',
                 ];
             });
@@ -167,8 +150,6 @@ class ReportController extends Controller
         $filters = $this->extractFilters($request);
         $filters['selected_cols'] = $request->query('selected_cols');
 
-        $selectedCols = $filters['selected_cols'] ?? null;
-
         if ($format === 'pdf') {
 
             // For PDF we render a simple HTML table from the same export query.
@@ -176,7 +157,6 @@ class ReportController extends Controller
                 'filters' => $filters,
                 'rows' => $this->buildReadingsQuery($filters)
                     ->latest('recorded_at')
-                    ->limit(5000)
                     ->get([
                         'recorded_at', 'region', 'region_code', 'warehouse', 'warehouse_code',
                         'device_name', 'sensor_device_id', 'device_type', 'device_ip',
@@ -374,20 +354,21 @@ class ReportController extends Controller
         return $alerts->whereNotNull('reading_id')->pluck('reading_id')->unique()->values()->all();
     }
 
-    private function applyRegionWarehouseToDevices($devicesQuery, array $filters): void
+    private function latestDeviceReadingIds()
     {
-        // best-effort using warehouses relation is available through device.warehouse()
-        if (!empty($filters['warehouse_code'])) {
-            $devicesQuery->whereHas('warehouse', function ($q) use ($filters) {
-                $q->where('warehouse_code', $filters['warehouse_code']);
-            });
-        }
+        return Reading::latestIdsPerSensor();
+    }
 
-        if (!empty($filters['region_code'])) {
-            $devicesQuery->whereHas('warehouse.region', function ($q) use ($filters) {
-                $q->where('region_code', $filters['region_code']);
-            });
-        }
+    private function distinctLocationCount($query, string $codeColumn, string $nameColumn): int
+    {
+        $locations = (clone $query)
+            ->selectRaw("COALESCE(NULLIF(TRIM({$codeColumn}), ''), NULLIF(TRIM({$nameColumn}), '')) AS location_key")
+            ->distinct();
+
+        return DB::query()
+            ->fromSub($locations, 'locations')
+            ->whereNotNull('location_key')
+            ->count();
     }
 
     private function buildCharts(array $filters): array
@@ -418,12 +399,7 @@ class ReportController extends Controller
             $readingsBase = $this->buildReadingsQuery($filters);
         }
 
-        // Build readings trend
-        $readingsTrend = (clone $readingsBase)
-            ->selectRaw('DATE(recorded_at) as d, YEAR(recorded_at) as y')
-            ->get();
-
-        // Instead of relying on SQL date-part portability, do in PHP bucketing.
+        // Build the trend in PHP so this works across MySQL and SQLite.
         $rows = (clone $readingsBase)
             ->select(['recorded_at'])
             ->get();
@@ -496,4 +472,3 @@ class ReportController extends Controller
         ];
     }
 }
-

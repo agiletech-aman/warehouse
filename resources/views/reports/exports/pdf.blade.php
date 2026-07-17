@@ -88,8 +88,8 @@
                         <td>{{ $row->unit ?: '-' }}</td>
                     @elseif($key === 'level')
                         <td>
-                            @php($lvl = $row->level ?: 'normal')
-                            <span class="badge {{ $lvl === 'normal' ? 'normal' : ($lvl === 'severe' ? 'severe' : 'critical') }}">{{ ucfirst($lvl) }}</span>
+                            @php($lvl = $row->reading_value === null ? 'unknown' : ($row->level ?: 'normal'))
+                            <span class="badge {{ $lvl === 'normal' ? 'normal' : ($lvl === 'severe' ? 'severe' : ($lvl === 'critical' ? 'critical' : 'offline')) }}">{{ ucfirst($lvl) }}</span>
                         </td>
                     @elseif($key === 'status')
                         <td>

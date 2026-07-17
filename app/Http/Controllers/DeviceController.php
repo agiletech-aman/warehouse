@@ -7,22 +7,24 @@ use App\Models\Device;
 use App\Models\Reading;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 
 class DeviceController extends Controller
 {
     private function latestReadingIds()
     {
-        return Reading::select(DB::raw('MAX(id) as id'))
-            ->whereNotNull('sensor_device_id')
-            ->groupBy('sensor_device_id');
+        return Reading::latestIdsPerSensor();
     }
 
     private function applyReadingDeviceFilters($query, Request $request)
     {
         $selectedRegion = trim((string) $request->query('region_code', ''));
         $selectedWarehouse = trim((string) $request->query('warehouse_code', ''));
+        $selectedStatus = strtolower(trim((string) $request->query('status', '')));
+
+        if (!in_array($selectedStatus, ['online', 'offline'], true)) {
+            $selectedStatus = '';
+        }
 
         if ($selectedRegion !== '') {
             $query->where(function ($query) use ($selectedRegion) {
@@ -38,13 +40,22 @@ class DeviceController extends Controller
             });
         }
 
-        return [$selectedRegion, $selectedWarehouse];
+        if ($selectedStatus !== '') {
+            $query->where('status', $selectedStatus);
+        }
+
+        return [$selectedRegion, $selectedWarehouse, $selectedStatus];
     }
 
     public function index(Request $request)
     {
         $selectedRegion = trim((string) $request->query('region_code', ''));
         $selectedWarehouse = trim((string) $request->query('warehouse_code', ''));
+        $selectedStatus = strtolower(trim((string) $request->query('status', '')));
+
+        if (!in_array($selectedStatus, ['online', 'offline'], true)) {
+            $selectedStatus = '';
+        }
 
         $regions = Reading::whereIn('id', $this->latestReadingIds())
             ->select('region_code', 'region')
@@ -85,6 +96,7 @@ class DeviceController extends Controller
             'warehouses',
             'selectedRegion',
             'selectedWarehouse',
+            'selectedStatus',
             'deviceCounts'
         ));
     }
@@ -92,7 +104,7 @@ class DeviceController extends Controller
     public function export(Request $request)
     {
         return Excel::download(
-            new DevicesExport($request->only(['region_code', 'warehouse_code'])),
+            new DevicesExport($request->only(['region_code', 'warehouse_code', 'status', 'search'])),
             'devices-' . now()->format('Y-m-d-His') . '.xlsx'
         );
     }

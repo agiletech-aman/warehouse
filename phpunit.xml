@@ -32,5 +32,9 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="READINGS_API_KEY" value="test-key"/>
+        <env name="WAREHOUSE_SUPER_ADMIN_EMAIL" value="superadmin@warehouse.com"/>
+        <env name="WAREHOUSE_SUPER_ADMIN_PASSWORD" value="CWC@0001"/>
+        <env name="WAREHOUSE_MANAGER_INITIAL_PASSWORD" value="CWC@0001"/>
     </php>
 </phpunit>

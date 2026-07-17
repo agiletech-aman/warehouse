@@ -99,7 +99,8 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const escapeText = function (value) {
-            return $('<div>').text(value || '-').html();
+            const displayValue = value === null || value === undefined || value === '' ? 'N/A' : value;
+            return $('<div>').text(displayValue).html();
         };
 
         window.initWarehouseDataTable('#readingsTable', {
@@ -108,6 +109,7 @@
             paging: true,
             info: true,
             pageLength: 10,
+            search: { search: new URLSearchParams(window.location.search).get('search') || '' },
             order: [],
             language: {
                 search: 'Search readings:'
@@ -119,27 +121,43 @@
                 { data: 'device', defaultContent: '-', render: escapeText },
                 { data: 'type', defaultContent: '-', render: escapeText },
                 { data: 'sensor', defaultContent: '-', render: escapeText },
-                { data: 'value', defaultContent: '-', render: escapeText },
+                { data: 'value', defaultContent: '', render: escapeText },
                 { data: 'unit', defaultContent: '-', render: escapeText },
                 { data: 'region_warehouse', defaultContent: '-', render: escapeText },
                 { data: 'godown_compartment', defaultContent: '-', render: escapeText },
                 {
-                    data: 'level',
-                    defaultContent: 'normal',
-                    render: function (value) {
-                        const level = String(value || 'normal').toLowerCase();
+    data: 'level',
+    defaultContent: 'unknown',
+    render: function (value, type, row) {
+        const readingValue = row.value;
 
-                        if (level === 'critical') {
-                            return '<span class="badge bg-danger">Critical</span>';
-                        }
+        const isNotAvailable =
+            readingValue === null ||
+            readingValue === undefined ||
+            readingValue === '' ||
+            String(readingValue).toUpperCase() === 'N/A';
 
-                        if (level === 'severe') {
-                            return '<span class="badge bg-warning text-dark">Severe</span>';
-                        }
+        if (isNotAvailable) {
+            return '<span class="badge bg-secondary">Unknown</span>';
+        }
 
-                        return '<span class="badge bg-success">Normal</span>';
-                    }
-                },
+        const level = String(value || 'unknown').toLowerCase();
+
+        if (level === 'critical') {
+            return '<span class="badge bg-danger">Critical</span>';
+        }
+
+        if (level === 'severe') {
+            return '<span class="badge bg-warning text-dark">Severe</span>';
+        }
+
+        if (level === 'normal') {
+            return '<span class="badge bg-success">Normal</span>';
+        }
+
+        return '<span class="badge bg-secondary">Unknown</span>';
+    }
+},
                 {
                     data: 'status',
                     defaultContent: 'unknown',
@@ -161,11 +179,6 @@
             ]
         });
 
-        window.setInterval(function () {
-            if (!document.hidden) {
-                window.location.reload();
-            }
-        }, 30000);
     });
 </script>
 @endsection

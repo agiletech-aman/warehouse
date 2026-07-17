@@ -15,9 +15,27 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class RegionsExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithEvents
 {
+    public function __construct(private string $search = '')
+    {
+    }
+
     public function query()
     {
-        return Region::orderBy('region_code');
+        $query = Region::query()->orderBy('region_code');
+
+        if ($this->search !== '') {
+            $like = '%' . $this->search . '%';
+            $query->where(function ($query) use ($like) {
+                $query->where('region_code', 'like', $like)
+                    ->orWhere('region_name', 'like', $like)
+                    ->orWhere('manager_name', 'like', $like)
+                    ->orWhere('manager_email', 'like', $like)
+                    ->orWhere('manager_phone', 'like', $like)
+                    ->orWhere('status', 'like', $like);
+            });
+        }
+
+        return $query;
     }
 
     public function headings(): array

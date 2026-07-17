@@ -7,15 +7,12 @@ use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class DeviceController extends Controller
 {
     private function latestReadingIds()
     {
-        return Reading::select(DB::raw('MAX(id) as id'))
-            ->whereNotNull('sensor_device_id')
-            ->groupBy('sensor_device_id');
+        return Reading::latestIdsPerSensor();
     }
 
     public function index(Request $request)
@@ -155,7 +152,7 @@ class DeviceController extends Controller
                 'latest_reading' => $reading->reading_value,
                 'reading_value' => $reading->reading_value,
                 'unit' => $reading->unit,
-                'level' => $reading->level ?: 'normal',
+                'level' => $reading->reading_value === null ? 'unknown' : ($reading->level ?: 'normal'),
                 'status' => $reading->status ?: 'offline',
                 'recorded_at' => $reading->recorded_at,
                 'created_at' => $reading->created_at,

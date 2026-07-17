@@ -19,7 +19,19 @@ class Region extends Model
         'manager_name',
         'manager_phone',
         'manager_email',
+        'password',
     ];
+
+    protected $hidden = [
+        'password',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'password' => 'hashed',
+        ];
+    }
 
     protected static function booted(): void
     {

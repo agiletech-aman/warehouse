@@ -38,6 +38,8 @@
                                 $alertType = $alert->type ?? $alert->alert_type ?? 'alert';
                                 $alertLabel = str_replace('_', ' ', ucfirst($alertType));
                                 $alertClass = 'bg-secondary';
+                                $isOfflineAlert = str_contains(strtolower((string) $alertType), 'offline')
+                                    || str_contains(strtolower((string) $alert->message), 'offline');
 
                                 if (str_contains($alertType, 'critical') || str_contains($alertType, 'high') || $alertType === 'device_offline') {
                                     $alertClass = 'bg-danger';
@@ -54,7 +56,13 @@
                             {{ $alert->message ?: (str_replace('_', ' ', ucfirst($alert->type ?? $alert->alert_type ?? 'Alert'))) }}
                         </td>
 
-                        <td>{{ $alert->alert_value ?? $alert->reading?->reading_value ?? '-' }}</td>
+                        <td>
+                            @if($isOfflineAlert)
+                                N/A
+                            @else
+                                {{ $alert->alert_value ?? $alert->reading?->reading_value ?? '-' }}
+                            @endif
+                        </td>
 
                         <td>{{ $alert->created_at ? $alert->created_at->format('d M Y H:i:s') : '-' }}</td>
 
@@ -89,11 +97,7 @@
             }
         });
 
-        window.setInterval(function () {
-            if (!document.hidden) {
-                window.location.reload();
-            }
-        }, 30000);
+
     });
 </script>
 @endsection

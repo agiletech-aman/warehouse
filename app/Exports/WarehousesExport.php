@@ -15,9 +15,31 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class WarehousesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithEvents
 {
+    public function __construct(private string $search = '')
+    {
+    }
+
     public function query()
     {
-        return Warehouse::with('region')->orderBy('warehouse_code');
+        $query = Warehouse::with('region')->orderBy('warehouse_code');
+
+        if ($this->search !== '') {
+            $like = '%' . $this->search . '%';
+            $query->where(function ($query) use ($like) {
+                $query->where('warehouse_code', 'like', $like)
+                    ->orWhere('warehouse_name', 'like', $like)
+                    ->orWhere('manager_name', 'like', $like)
+                    ->orWhere('manager_email', 'like', $like)
+                    ->orWhere('manager_phone', 'like', $like)
+                    ->orWhere('status', 'like', $like)
+                    ->orWhereHas('region', function ($regionQuery) use ($like) {
+                        $regionQuery->where('region_code', 'like', $like)
+                            ->orWhere('region_name', 'like', $like);
+                    });
+            });
+        }
+
+        return $query;
     }
 
     public function headings(): array

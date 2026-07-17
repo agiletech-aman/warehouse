@@ -22,13 +22,18 @@ class ReadingController extends Controller
             $perPage = 15;
         }
 
-        $deviceStatus = $request->query('device_status'); // active|inactive (from devices.status)
-        if ($deviceStatus !== null && !in_array($deviceStatus, ['active', 'inactive'], true)) {
+        $deviceStatus = $request->query('device_status');
+        if ($deviceStatus !== null && !in_array($deviceStatus, ['active', 'inactive', 'online', 'offline'], true)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid device_status. Use active or inactive.',
+                'message' => 'Invalid device_status. Use online/offline (active/inactive are also accepted).',
             ], 422);
         }
+        $normalizedDeviceStatus = match ($deviceStatus) {
+            'active' => 'online',
+            'inactive' => 'offline',
+            default => $deviceStatus,
+        };
 
         $level = $request->query('level'); // normal|severe|critical (reading level)
         if ($level !== null && !in_array($level, ['normal', 'severe', 'critical'], true)) {
@@ -71,10 +76,10 @@ class ReadingController extends Controller
             $base->where('warehouse_code', $warehouseCode);
         }
 
-        if ($deviceStatus || $regionId || $regionName || $warehouseId || $warehouseName) {
-            $base->whereHas('device', function ($q) use ($deviceStatus, $regionId, $regionName, $warehouseId, $warehouseName) {
-                if ($deviceStatus) {
-                    $q->where('status', $deviceStatus);
+        if ($normalizedDeviceStatus || $regionId || $regionName || $warehouseId || $warehouseName) {
+            $base->whereHas('device', function ($q) use ($normalizedDeviceStatus, $regionId, $regionName, $warehouseId, $warehouseName) {
+                if ($normalizedDeviceStatus) {
+                    $q->where('status', $normalizedDeviceStatus);
                 }
 
                 if ($warehouseId) {
@@ -178,11 +183,47 @@ class ReadingController extends Controller
 
     public function store(Request $request)
     {
+        $expectedKey = (string) config('services.readings.key');
+        if ($expectedKey === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Readings API key is not configured.',
+            ], 503);
+        }
+
+        $validated = $request->validate([
+            'key' => ['required', 'string'],
+            'readings' => ['required', 'array', 'min:1', 'max:500'],
+            'readings.*.device_id' => ['required', 'string', 'max:100'],
+            'readings.*.device_name' => ['nullable', 'string', 'max:100'],
+            'readings.*.device_type' => ['nullable', 'string', 'max:50'],
+            'readings.*.device_ip' => ['nullable', 'ip'],
+            'readings.*.unit' => ['nullable', 'string', 'max:20'],
+            'readings.*.port' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'readings.*.region' => ['nullable', 'string', 'max:150'],
+            'readings.*.region_code' => ['nullable', 'string', 'max:50'],
+            'readings.*.warehouse' => ['nullable', 'string', 'max:150'],
+            'readings.*.warehouse_code' => ['nullable', 'string', 'max:50'],
+            'readings.*.godown' => ['nullable', 'string', 'max:100'],
+            'readings.*.compartment' => ['nullable', 'string', 'max:100'],
+            'readings.*.value' => ['nullable', 'numeric'],
+            'readings.*.level' => ['nullable', 'in:normal,severe,critical'],
+            'readings.*.status' => ['nullable', 'in:online,offline'],
+            'readings.*.recorded_at' => ['nullable', 'date'],
+        ]);
+
+        if (!hash_equals($expectedKey, $validated['key'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid readings API key.',
+            ], 401);
+        }
+
         $rows = [];
 
-        foreach ($request->readings as $reading) {
+        foreach ($validated['readings'] as $reading) {
             $row = [
-                'key' => $request->key,
+                'key' => $validated['key'],
                 'sensor_device_id' => $reading['device_id'] ?? null,
                 'device_id' => null,
                 'device_name' => $reading['device_name'] ?? null,
@@ -315,7 +356,7 @@ class ReadingController extends Controller
                 ->where('level', $levelKey)
                 ->first();
 
-            $warehouseMail     = $routing?->warehouse_mail ?? false;
+            $warehouseMail     = $routing ? (bool) $routing->warehouse_mail : true;
             $warehouseWA       = $routing?->warehouse_whatsapp ?? false;
             $regionalMail      = $routing?->regional_mail ?? false;
             $regionalWA        = $routing?->regional_whatsapp ?? false;
@@ -374,8 +415,9 @@ class ReadingController extends Controller
             };
 
             // Send Mail - Correct Flag Check
-            $sendMail = function () use ($row, $alertTypeLabel, $managerEmail, $regionalEmail, $ccEmails, &$alertEmailsSent, $buildMailBody, $warehouseMail, $regionalMail) {
-                if (!$managerEmail) return;   // Warehouse manager must exist for mail
+            $sendMail = function () use ($row, $alertTypeLabel, $managerEmail, $regionalEmail, $ccEmails, &$alertEmailsSent, $buildMailBody, $regionalMail): bool {
+                $primaryRecipient = $managerEmail ?: ($regionalMail ? $regionalEmail : null);
+                if (!$primaryRecipient) return false;
 
                 try {
                     $mailBody = $buildMailBody();
@@ -383,7 +425,7 @@ class ReadingController extends Controller
 
                     $allCc = [];
                     // Only add regional if regional_mail flag is true
-                    if ($regionalMail && $regionalEmail) {
+                    if ($regionalMail && $regionalEmail && $regionalEmail !== $primaryRecipient) {
                         $allCc[] = $regionalEmail;
                     }
                     // Add system CC emails
@@ -394,8 +436,8 @@ class ReadingController extends Controller
 
                     \Illuminate\Support\Facades\Mail::raw(
                         $mailBody,
-                        function ($m) use ($managerEmail, $alertTypeLabel, $target, $allCc) {
-                            $m->to($managerEmail)
+                        function ($m) use ($primaryRecipient, $alertTypeLabel, $target, $allCc) {
+                            $m->to($primaryRecipient)
                                 ->subject('Warehouse Alert [' . $alertTypeLabel . ']: ' . $target);
 
                             if (!empty($allCc)) {
@@ -406,11 +448,13 @@ class ReadingController extends Controller
 
                     $alertEmailsSent++;
                     Log::info('Mail sent successfully', [
-                        'to'       => $managerEmail,
+                        'to'       => $primaryRecipient,
                         'cc_count' => count($allCc),
                     ]);
+                    return true;
                 } catch (\Throwable $e) {
                     Log::error('MAIL SEND FAILED', ['error' => $e->getMessage()]);
+                    return false;
                 }
             };
 
@@ -458,9 +502,7 @@ class ReadingController extends Controller
                 $totalAlertsCreated += $created ? 1 : 0;
 
                 // Direct flag checks
-                if ($warehouseMail || $regionalMail) {
-                    $sendMail();
-                }
+                $emailSent = ($warehouseMail || $regionalMail) ? $sendMail() : false;
                 if ($warehouseWA) {
                     $sendWhatsapp($managerPhone);
                 }
@@ -468,7 +510,9 @@ class ReadingController extends Controller
                     $sendWhatsapp($regionalPhone);
                 }
 
-                $created->update(['last_email_at' => now()]);
+                if ($emailSent) {
+                    $created->update(['last_email_at' => now()]);
+                }
                 continue;
             }
 
@@ -477,9 +521,7 @@ class ReadingController extends Controller
             $canSend = !$last || \Carbon\Carbon::parse($last)->addHour()->lte(now());
 
             if ($canSend) {
-                if ($warehouseMail || $regionalMail) {
-                    $sendMail();
-                }
+                $emailSent = ($warehouseMail || $regionalMail) ? $sendMail() : false;
                 if ($warehouseWA) {
                     $sendWhatsapp($managerPhone);
                 }
@@ -487,7 +529,9 @@ class ReadingController extends Controller
                     $sendWhatsapp($regionalPhone);
                 }
 
-                $alert->update(['last_email_at' => now()]);
+                if ($emailSent) {
+                    $alert->update(['last_email_at' => now()]);
+                }
             }
         }
 
