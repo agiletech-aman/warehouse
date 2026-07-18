@@ -35,10 +35,6 @@ return [
         ],
     ],
 
-    'readings' => [
-        'key' => env('READINGS_API_KEY'),
-    ],
-
     'warehouse_auth' => [
         'super_admin_email' => env('WAREHOUSE_SUPER_ADMIN_EMAIL'),
         'super_admin_password' => env('WAREHOUSE_SUPER_ADMIN_PASSWORD'),

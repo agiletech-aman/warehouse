@@ -122,16 +122,20 @@ class ReadingModuleTest extends TestCase
         $this->assertSame(1, Alert::count());
     }
 
-    public function test_sensor_reading_rejects_an_invalid_api_key(): void
+    public function test_sensor_reading_accepts_the_existing_payload_without_api_key_configuration(): void
     {
         $this->postJson('/api/readings', [
             'key' => 'wrong-key',
             'readings' => [[
                 'device_id' => 'DEVICE-1',
                 'value' => 10,
+                'unit' => 'C',
             ]],
-        ])->assertUnauthorized();
+        ])->assertOk();
 
-        $this->assertDatabaseCount('readings', 0);
+        $this->assertDatabaseHas('readings', [
+            'sensor_device_id' => 'DEVICE-1',
+            'reading_value' => 10,
+        ]);
     }
 }

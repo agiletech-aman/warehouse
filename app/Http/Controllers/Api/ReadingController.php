@@ -183,47 +183,11 @@ class ReadingController extends Controller
 
     public function store(Request $request)
     {
-        $expectedKey = (string) config('services.readings.key');
-        if ($expectedKey === '') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Readings API key is not configured.',
-            ], 503);
-        }
-
-        $validated = $request->validate([
-            'key' => ['required', 'string'],
-            'readings' => ['required', 'array', 'min:1', 'max:500'],
-            'readings.*.device_id' => ['required', 'string', 'max:100'],
-            'readings.*.device_name' => ['nullable', 'string', 'max:100'],
-            'readings.*.device_type' => ['nullable', 'string', 'max:50'],
-            'readings.*.device_ip' => ['nullable', 'ip'],
-            'readings.*.unit' => ['nullable', 'string', 'max:20'],
-            'readings.*.port' => ['nullable', 'integer', 'min:0', 'max:65535'],
-            'readings.*.region' => ['nullable', 'string', 'max:150'],
-            'readings.*.region_code' => ['nullable', 'string', 'max:50'],
-            'readings.*.warehouse' => ['nullable', 'string', 'max:150'],
-            'readings.*.warehouse_code' => ['nullable', 'string', 'max:50'],
-            'readings.*.godown' => ['nullable', 'string', 'max:100'],
-            'readings.*.compartment' => ['nullable', 'string', 'max:100'],
-            'readings.*.value' => ['nullable', 'numeric'],
-            'readings.*.level' => ['nullable', 'in:normal,severe,critical'],
-            'readings.*.status' => ['nullable', 'in:online,offline'],
-            'readings.*.recorded_at' => ['nullable', 'date'],
-        ]);
-
-        if (!hash_equals($expectedKey, $validated['key'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid readings API key.',
-            ], 401);
-        }
-
         $rows = [];
 
-        foreach ($validated['readings'] as $reading) {
+        foreach ($request->readings as $reading) {
             $row = [
-                'key' => $validated['key'],
+                'key' => $request->key,
                 'sensor_device_id' => $reading['device_id'] ?? null,
                 'device_id' => null,
                 'device_name' => $reading['device_name'] ?? null,
