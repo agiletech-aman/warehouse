@@ -59,6 +59,7 @@ class DeviceController extends Controller
 
         $regions = Reading::whereIn('id', $this->latestReadingIds())
             ->select('region_code', 'region')
+            ->distinct()
             ->orderBy('region')
             ->get()
             ->filter(fn ($region) => $region->region_code || $region->region)
@@ -67,14 +68,12 @@ class DeviceController extends Controller
 
         $warehouses = Reading::whereIn('id', $this->latestReadingIds())
             ->select('warehouse_code', 'warehouse')
+            ->distinct()
             ->orderBy('warehouse')
             ->get()
             ->filter(fn ($warehouse) => $warehouse->warehouse_code || $warehouse->warehouse)
             ->unique(fn ($warehouse) => $warehouse->warehouse_code ?: $warehouse->warehouse)
             ->values();
-
-        $devicesQuery = Reading::whereIn('id', $this->latestReadingIds());
-        $this->applyReadingDeviceFilters($devicesQuery, $request);
 
         $deviceCountsQuery = Reading::whereIn('id', $this->latestReadingIds());
         $this->applyReadingDeviceFilters($deviceCountsQuery, $request);
@@ -85,13 +84,7 @@ class DeviceController extends Controller
             'offline' => (clone $deviceCountsQuery)->where('status', 'offline')->count(),
         ];
 
-        $devices = $devicesQuery
-            ->latest('recorded_at')
-            ->latest('id')
-            ->get();
-
         return view('devices.index', compact(
-            'devices',
             'regions',
             'warehouses',
             'selectedRegion',
@@ -99,6 +92,73 @@ class DeviceController extends Controller
             'selectedStatus',
             'deviceCounts'
         ));
+    }
+
+    public function data(Request $request)
+    {
+        $draw = (int) $request->query('draw', 1);
+        $start = max((int) $request->query('start', 0), 0);
+        $length = (int) $request->query('length', 10);
+
+        if ($length <= 0 || $length > 100) {
+            $length = 10;
+        }
+
+        $allDevices = Reading::whereIn('id', $this->latestReadingIds());
+        $recordsTotal = (clone $allDevices)->count();
+
+        $query = Reading::whereIn('id', $this->latestReadingIds());
+        $this->applyReadingDeviceFilters($query, $request);
+        $this->applyDataTableSearch($query, $request);
+
+        $recordsFiltered = (clone $query)->count();
+
+        $devices = $query
+            ->latest('recorded_at')
+            ->latest('id')
+            ->offset($start)
+            ->limit($length)
+            ->get([
+                'id',
+                'sensor_device_id',
+                'device_name',
+                'device_type',
+                'region',
+                'region_code',
+                'warehouse',
+                'warehouse_code',
+                'godown',
+                'compartment',
+                'reading_value',
+                'unit',
+                'level',
+                'status',
+            ])
+            ->map(function (Reading $reading) {
+                return [
+                    'code' => $reading->sensor_device_id ?: '-',
+                    'name' => $reading->device_name ?: '-',
+                    'region' => $reading->region ?: ($reading->region_code ?: '-'),
+                    'region_code' => $reading->region_code,
+                    'warehouse' => $reading->warehouse ?: ($reading->warehouse_code ?: '-'),
+                    'warehouse_code' => $reading->warehouse_code,
+                    'type' => $reading->device_type ?: '-',
+                    'location' => $this->joinLocationParts($reading->godown, $reading->compartment),
+                    'value' => $reading->reading_value,
+                    'unit' => $reading->unit,
+                    'level' => $reading->reading_value === null ? 'unknown' : ($reading->level ?: 'normal'),
+                    'status' => $reading->status ?: 'offline',
+                    'delete_url' => route('devices.reading-destroy', $reading),
+                    'delete_label' => $reading->device_name ?: ($reading->sensor_device_id ?: 'this device'),
+                ];
+            });
+
+        return response()->json([
+            'draw' => $draw,
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data' => $devices,
+        ]);
     }
 
     public function export(Request $request)
@@ -218,5 +278,40 @@ class DeviceController extends Controller
         })->delete();
 
         return redirect()->back()->with('success', $deletedReadings . ' reading(s) deleted successfully.');
+    }
+
+    private function applyDataTableSearch($query, Request $request): void
+    {
+        $value = trim((string) data_get($request->query('search', []), 'value', ''));
+
+        if ($value === '') {
+            return;
+        }
+
+        $query->where(function ($query) use ($value) {
+            $query->where('sensor_device_id', 'like', '%' . $value . '%')
+                ->orWhere('device_name', 'like', '%' . $value . '%')
+                ->orWhere('device_type', 'like', '%' . $value . '%')
+                ->orWhere('region', 'like', '%' . $value . '%')
+                ->orWhere('region_code', 'like', '%' . $value . '%')
+                ->orWhere('warehouse', 'like', '%' . $value . '%')
+                ->orWhere('warehouse_code', 'like', '%' . $value . '%')
+                ->orWhere('godown', 'like', '%' . $value . '%')
+                ->orWhere('compartment', 'like', '%' . $value . '%')
+                ->orWhere('reading_value', 'like', '%' . $value . '%')
+                ->orWhere('unit', 'like', '%' . $value . '%')
+                ->orWhere('level', 'like', '%' . $value . '%')
+                ->orWhere('status', 'like', '%' . $value . '%');
+        });
+    }
+
+    private function joinLocationParts(?string $first, ?string $second): string
+    {
+        $parts = array_values(array_filter([
+            trim((string) $first),
+            trim((string) $second),
+        ], fn ($part) => $part !== ''));
+
+        return $parts ? implode(' / ', $parts) : '-';
     }
 }

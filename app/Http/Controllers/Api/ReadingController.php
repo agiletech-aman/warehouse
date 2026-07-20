@@ -328,14 +328,7 @@ class ReadingController extends Controller
                 ->pluck('email')
                 ->toArray();
 
-            Log::info('ROUTING CHECK', [
-                'device_type'     => $deviceTypeKey,
-                'level'           => $levelKey,
-                'warehouse_mail'  => (int)$warehouseMail,
-                'warehouse_wa'    => (int)$warehouseWA,
-                'regional_mail'   => (int)$regionalMail,
-                'regional_wa'     => (int)$regionalWA,
-            ]);
+
 
             // Build Mail Body
             $buildMailBody = function () use ($row, $resolvedDeviceId, $sensorDeviceId, $message, $alertTypeLabel, $resolveWarehouseForRow) {

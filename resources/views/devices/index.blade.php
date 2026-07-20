@@ -110,75 +110,7 @@
                         <th class="text-center">Action</th>
                     </tr>
                 </thead>
-                <tbody>
-                    @foreach($devices as $readingDevice)
-                    @php($deleteDeviceLabel = $readingDevice->device_name ?: ($readingDevice->sensor_device_id ?: 'this device'))
-                    <tr>
-                        <td>{{ $readingDevice->sensor_device_id ?: '-' }}</td>
-                        <td>{{ $readingDevice->device_name ?: '-' }}</td>
-                        <td>
-                            {{ $readingDevice->region ?: ($readingDevice->region_code ?: '-') }}
-                            @if($readingDevice->region_code)
-                            <span class="text-muted">({{ $readingDevice->region_code }})</span>
-                            @endif
-                        </td>
-                        <td>
-                            {{ $readingDevice->warehouse ?: ($readingDevice->warehouse_code ?: '-') }}
-                            @if($readingDevice->warehouse_code)
-                            <span class="text-muted">({{ $readingDevice->warehouse_code }})</span>
-                            @endif
-                        </td>
-                        <td>{{ $readingDevice->device_type ?: '-' }}</td>
-                        <td>{{ $readingDevice->godown ?: '-' }}{{ $readingDevice->compartment ? ' / '.$readingDevice->compartment : '' }}</td>
-                       <td>
-    @if($readingDevice->reading_value !== null && $readingDevice->reading_value !== '')
-        {{ $readingDevice->reading_value }}
-
-        @if($readingDevice->unit)
-            {{ $readingDevice->unit }}
-        @endif
-    @else
-        N/A
-    @endif
-</td>
-                        <td>
-                            @php($deviceStatus = $readingDevice->status ?? 'offline')
-                            @if($deviceStatus === 'online')
-                            <span class="badge bg-success">Online</span>
-                            @elseif($deviceStatus === 'offline')
-                            <span class="badge bg-secondary">Offline</span>
-                            @else
-                            <span class="badge bg-light text-dark">{{ ucfirst($deviceStatus) }}</span>
-                            @endif
-
-                            @php($deviceLevel = ($readingDevice->reading_value === null || $readingDevice->reading_value === '')
-                                ? 'unknown'
-                                : strtolower((string) ($readingDevice->level ?? 'normal')))
-                            @if($deviceLevel === 'critical')
-                            <span class="badge bg-danger">Critical</span>
-                            @elseif($deviceLevel === 'severe')
-                            <span class="badge bg-warning text-dark">Severe</span>
-                            @elseif($deviceLevel === 'unknown')
-                            <span class="badge bg-secondary">Unknown</span>
-                            @else
-                            <span class="badge bg-success">Normal</span>
-                            @endif
-                        </td>
-                        <td class="text-center">
-                            <button type="button"
-                                class="btn btn-link text-danger p-0 delete-device-btn"
-                                data-bs-toggle="modal"
-                                data-bs-target="#deleteDeviceModal"
-                                data-action="{{ route('devices.reading-destroy', $readingDevice->id) }}"
-                                data-device="{{ $deleteDeviceLabel }}"
-                                title="Delete"
-                                aria-label="Delete {{ $deleteDeviceLabel }}">
-                                <i class="fa-solid fa-trash"></i>
-                            </button>
-                        </td>
-                    </tr>
-                    @endforeach
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
 
@@ -231,6 +163,11 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        const escapeText = function(value) {
+            const displayValue = value === null || value === undefined || value === '' ? '-' : value;
+            return $('<div>').text(displayValue).html();
+        };
+
         const deleteModal = document.getElementById('deleteDeviceModal');
         const deleteForm = document.getElementById('deleteDeviceForm');
         const deleteDeviceName = document.getElementById('deleteDeviceName');
@@ -250,14 +187,100 @@
         }
 
         const table = window.initWarehouseDataTable('#devicesTable', {
+            processing: true,
+            serverSide: true,
             searching: true,
             paging: true,
             info: true,
             pageLength: 10,
             search: { search: new URLSearchParams(window.location.search).get('search') || '' },
+            order: [],
             language: {
                 search: 'Search devices:'
-            }
+            },
+            ajax: {
+                url: '{{ route('devices.data') }}',
+                data: function(data) {
+                    const params = new URLSearchParams(window.location.search);
+                    ['region_code', 'warehouse_code', 'status'].forEach(function(key) {
+                        if (params.get(key)) {
+                            data[key] = params.get(key);
+                        }
+                    });
+                }
+            },
+            columns: [
+                { data: 'code', defaultContent: '-', render: escapeText },
+                { data: 'name', defaultContent: '-', render: escapeText },
+                {
+                    data: 'region',
+                    defaultContent: '-',
+                    render: function(value, type, row) {
+                        const text = row.region_code ? value + ' (' + row.region_code + ')' : value;
+                        return escapeText(text);
+                    }
+                },
+                {
+                    data: 'warehouse',
+                    defaultContent: '-',
+                    render: function(value, type, row) {
+                        const text = row.warehouse_code ? value + ' (' + row.warehouse_code + ')' : value;
+                        return escapeText(text);
+                    }
+                },
+                { data: 'type', defaultContent: '-', render: escapeText },
+                { data: 'location', defaultContent: '-', render: escapeText },
+                {
+                    data: 'value',
+                    defaultContent: '',
+                    render: function(value, type, row) {
+                        if (value === null || value === undefined || value === '') {
+                            return 'N/A';
+                        }
+
+                        return escapeText(row.unit ? value + ' ' + row.unit : value);
+                    }
+                },
+                {
+                    data: 'status',
+                    defaultContent: 'offline',
+                    render: function(value, type, row) {
+                        const status = String(value || 'offline').toLowerCase();
+                        const level = String(row.level || 'unknown').toLowerCase();
+                        let html = status === 'online'
+                            ? '<span class="badge bg-success">Online</span>'
+                            : status === 'offline'
+                                ? '<span class="badge bg-secondary">Offline</span>'
+                                : '<span class="badge bg-light text-dark">' + escapeText(status.charAt(0).toUpperCase() + status.slice(1)) + '</span>';
+
+                        if (level === 'critical') {
+                            html += ' <span class="badge bg-danger">Critical</span>';
+                        } else if (level === 'severe') {
+                            html += ' <span class="badge bg-warning text-dark">Severe</span>';
+                        } else if (level === 'normal') {
+                            html += ' <span class="badge bg-success">Normal</span>';
+                        } else {
+                            html += ' <span class="badge bg-secondary">Unknown</span>';
+                        }
+
+                        return html;
+                    }
+                },
+                {
+                    data: 'delete_url',
+                    orderable: false,
+                    searchable: false,
+                    className: 'text-center',
+                    render: function(value, type, row) {
+                        const label = row.delete_label || 'this device';
+                        return '<button type="button" class="btn btn-link text-danger p-0 delete-device-btn"' +
+                            ' data-bs-toggle="modal" data-bs-target="#deleteDeviceModal"' +
+                            ' data-action="' + escapeText(value) + '" data-device="' + escapeText(label) + '"' +
+                            ' title="Delete" aria-label="Delete ' + escapeText(label) + '">' +
+                            '<i class="fa-solid fa-trash"></i></button>';
+                    }
+                }
+            ]
         });
 
         table.on('search.dt', function () {

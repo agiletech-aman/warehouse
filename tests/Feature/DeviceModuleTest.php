@@ -51,9 +51,16 @@ class DeviceModuleTest extends TestCase
 
         $this->withSession($session)->get('/devices')
             ->assertStatus(200)
-            ->assertSee('TEMP_192_168_1_101_1')
-            ->assertSee('Warehouse A')
-            ->assertSee('RE-MUM');
+            ->assertSee('Devices');
+
+        $this->withSession($session)->getJson('/devices/data?draw=1&start=0&length=10')
+            ->assertOk()
+            ->assertJsonPath('recordsTotal', 1)
+            ->assertJsonFragment([
+                'code' => 'TEMP_192_168_1_101_1',
+                'warehouse' => 'Warehouse A',
+                'region_code' => 'RE-MUM',
+            ]);
 
         $this->withSession($session)->get('/hierarchy')
             ->assertStatus(200)
@@ -87,5 +94,30 @@ class DeviceModuleTest extends TestCase
             ->assertSee('DELHI')
             ->assertSee('Delhi Warehouse')
             ->assertSee('No devices found');
+    }
+
+    public function test_devices_data_endpoint_returns_only_the_requested_page(): void
+    {
+        $session = $this->adminSession();
+
+        foreach (range(1, 12) as $index) {
+            Reading::create([
+                'sensor_device_id' => 'DEVICE-' . $index,
+                'device_name' => 'Device ' . $index,
+                'unit' => 'C',
+                'reading_value' => 20 + $index,
+                'level' => 'normal',
+                'status' => 'online',
+                'recorded_at' => now()->subMinutes($index),
+            ]);
+        }
+
+        $this->withSession($session)
+            ->getJson('/devices/data?draw=7&start=5&length=5')
+            ->assertOk()
+            ->assertJsonPath('draw', 7)
+            ->assertJsonPath('recordsTotal', 12)
+            ->assertJsonPath('recordsFiltered', 12)
+            ->assertJsonCount(5, 'data');
     }
 }
