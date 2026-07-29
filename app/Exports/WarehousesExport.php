@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Models\Reading;
 use App\Models\Warehouse;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -15,13 +16,22 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class WarehousesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoSize, WithEvents
 {
-    public function __construct(private string $search = '')
+    private $latestDeviceReadings;
+
+    public function __construct(
+        private string $search = '',
+        private bool $activeOnly = false
+    )
     {
     }
 
     public function query()
     {
         $query = Warehouse::with('region')->orderBy('warehouse_code');
+
+        if ($this->activeOnly) {
+            $query->activeInLast24Hours();
+        }
 
         if ($this->search !== '') {
             $like = '%' . $this->search . '%';
@@ -58,12 +68,16 @@ class WarehousesExport implements FromQuery, WithHeadings, WithMapping, ShouldAu
             'Country',
             'Latitude',
             'Longitude',
+            'CO2 Devices',
+            'PH3 Devices',
             'Status',
         ];
     }
 
     public function map($warehouse): array
     {
+        $deviceTypeCounts = $this->deviceTypeCounts($warehouse);
+
         return [
             $warehouse->warehouse_code,
             $warehouse->warehouse_name,
@@ -78,6 +92,8 @@ class WarehousesExport implements FromQuery, WithHeadings, WithMapping, ShouldAu
             $warehouse->country ?: '-',
             $warehouse->latitude,
             $warehouse->longitude,
+            $deviceTypeCounts['CO2'],
+            $deviceTypeCounts['PH3'],
             ucfirst((string) $warehouse->status),
         ];
     }
@@ -86,9 +102,45 @@ class WarehousesExport implements FromQuery, WithHeadings, WithMapping, ShouldAu
     {
         return [
             AfterSheet::class => function (AfterSheet $event) {
-                $this->styleSheet($event, 'N');
+                $this->styleSheet($event, 'P');
             },
         ];
+    }
+
+    private function deviceTypeCounts(Warehouse $warehouse): array
+    {
+        $this->latestDeviceReadings ??= Reading::query()
+            ->whereIn('id', Reading::latestIdsPerSensor())
+            ->get(['id', 'warehouse', 'warehouse_code', 'device_type']);
+
+        $warehouseCode = strtolower(trim((string) $warehouse->warehouse_code));
+        $warehouseName = strtolower(trim((string) $warehouse->warehouse_name));
+
+        $warehouseReadings = $this->latestDeviceReadings->filter(function (Reading $reading) use ($warehouseCode, $warehouseName) {
+            $readingCode = strtolower(trim((string) $reading->warehouse_code));
+            $readingName = strtolower(trim((string) $reading->warehouse));
+
+            return ($warehouseCode !== '' && $readingCode === $warehouseCode)
+                || ($warehouseName !== '' && $readingName === $warehouseName);
+        });
+
+        return [
+            'CO2' => $warehouseReadings->filter(
+                fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'CO2'
+            )->count(),
+            'PH3' => $warehouseReadings->filter(
+                fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'PH3'
+            )->count(),
+        ];
+    }
+
+    private function normalizedDeviceType(?string $deviceType): string
+    {
+        return strtoupper(str_replace(
+            [' ', '-', '_', '₂', '₃'],
+            ['', '', '', '2', '3'],
+            trim((string) $deviceType)
+        ));
     }
 
     private function styleSheet(AfterSheet $event, string $statusColumn): void

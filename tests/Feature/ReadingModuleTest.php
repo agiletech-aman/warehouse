@@ -8,6 +8,7 @@ use App\Models\Region;
 use App\Models\Reading;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -130,12 +131,122 @@ class ReadingModuleTest extends TestCase
                 'device_id' => 'DEVICE-1',
                 'value' => 10,
                 'unit' => 'C',
+                'level' => 'normal',
             ]],
         ])->assertOk();
 
         $this->assertDatabaseHas('readings', [
             'sensor_device_id' => 'DEVICE-1',
             'reading_value' => 10,
+            'level' => 'normal',
         ]);
+    }
+
+    public function test_numeric_reading_without_level_is_accepted_and_logged_for_debugging(): void
+    {
+        Log::spy();
+
+        $this->postJson('/api/readings', [
+            'key' => 'test-key',
+            'readings' => [[
+                'device_id' => 'CO2_172_22_26_12_1',
+                'value' => 695,
+                'unit' => 'ppm',
+                'status' => 'online',
+            ]],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('readings', [
+            'sensor_device_id' => 'CO2_172_22_26_12_1',
+            'reading_value' => 695,
+            'level' => null,
+            'status' => 'online',
+        ]);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(fn (string $message, array $context) =>
+                str_contains($message, 'without a level')
+                && $context['sensor_device_id'] === 'CO2_172_22_26_12_1'
+                && (float) $context['reading_value'] === 695.0
+            );
+    }
+
+    public function test_warn_level_is_mapped_to_severe_and_displayed_instead_of_unknown(): void
+    {
+        $this->postJson('/api/readings', [
+            'key' => 'test-key',
+            'readings' => [[
+                'device_id' => 'CO2_172_22_26_12_1',
+                'value' => 680,
+                'unit' => 'ppm',
+                'level' => 'WARN',
+                'status' => 'online',
+            ]],
+        ])->assertOk();
+
+        $reading = Reading::firstOrFail();
+
+        $this->assertSame('severe', $reading->level);
+        $this->assertSame('severe', Reading::normalizeLevel(680, 'WARN'));
+
+        $admin = Admin::factory()->create();
+
+        $this->withSession([
+            'admin_id' => $admin->id,
+            'admin_name' => $admin->name,
+            'admin_email' => $admin->email,
+        ])->getJson('/readings/data?draw=1&start=0&length=10')
+            ->assertOk()
+            ->assertJsonPath('data.0.level', 'severe');
+    }
+
+    public function test_zero_reading_keeps_the_level_received_by_the_api(): void
+    {
+        $this->postJson('/api/readings', [
+            'key' => 'test-key',
+            'readings' => [[
+                'device_id' => 'PH3_192_168_19_26_1',
+                'value' => 0,
+                'unit' => 'ppm',
+                'severity' => 'normal',
+                'status' => 'offline',
+            ]],
+        ])->assertOk();
+
+        $reading = Reading::firstOrFail();
+
+        $this->assertSame(0.0, (float) $reading->reading_value);
+        $this->assertSame('normal', $reading->level);
+        $this->assertSame('normal', Reading::normalizeLevel($reading->reading_value, $reading->level));
+        $this->assertDatabaseHas('alerts', [
+            'device_id' => 'PH3_192_168_19_26_1',
+            'type' => 'unknown',
+            'alert_type' => 'device_offline',
+            'message' => 'Device is OFFLINE',
+            'active' => true,
+        ]);
+
+        $admin = Admin::factory()->create();
+
+        $this->withSession([
+            'admin_id' => $admin->id,
+            'admin_name' => $admin->name,
+            'admin_email' => $admin->email,
+        ])->getJson('/readings/data?draw=1&start=0&length=10')
+            ->assertOk()
+            ->assertJsonPath('data.0.value', 0)
+            ->assertJsonPath('data.0.level', 'normal');
+
+        $this->withSession([
+            'admin_id' => $admin->id,
+            'admin_name' => $admin->name,
+            'admin_email' => $admin->email,
+        ])->getJson('/alerts/data?draw=1&start=0&length=10')
+            ->assertOk()
+            ->assertJsonPath('recordsTotal', 1)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.type', 'unknown')
+            ->assertJsonPath('data.0.message', 'Device is OFFLINE');
     }
 }

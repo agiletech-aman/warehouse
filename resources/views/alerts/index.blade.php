@@ -28,56 +28,7 @@
                     <th>Mail Status</th>
                 </tr>
                 </thead>
-                <tbody>
-                @foreach($alerts as $alert)
-                    <tr>
-                        <td>{{ optional($alert->device)->device_name ?: ($alert->reading?->device_name ?: $alert->device_id) }}</td>
-
-                        <td>
-                            @php
-                                $alertType = $alert->type ?? $alert->alert_type ?? 'alert';
-                                $alertLabel = str_replace('_', ' ', ucfirst($alertType));
-                                $alertClass = 'bg-secondary';
-                                $isOfflineAlert = str_contains(strtolower((string) $alertType), 'offline')
-                                    || str_contains(strtolower((string) $alert->message), 'offline');
-
-                                if (str_contains($alertType, 'critical') || str_contains($alertType, 'high') || $alertType === 'device_offline') {
-                                    $alertClass = 'bg-danger';
-                                } elseif (str_contains($alertType, 'warn') || str_contains($alertType, 'severe')) {
-                                    $alertClass = 'bg-warning text-dark';
-                                } else {
-                                    $alertClass = 'bg-info text-dark';
-                                }
-                            @endphp
-                            <span class="badge {{ $alertClass }} rounded-pill">{{ $alertLabel }}</span>
-                        </td>
-
-                        <td>
-                            {{ $alert->message ?: (str_replace('_', ' ', ucfirst($alert->type ?? $alert->alert_type ?? 'Alert'))) }}
-                        </td>
-
-                        <td>
-                            @if($isOfflineAlert)
-                                N/A
-                            @else
-                                {{ $alert->alert_value ?? $alert->reading?->reading_value ?? '-' }}
-                            @endif
-                        </td>
-
-                        <td>{{ $alert->created_at ? $alert->created_at->format('d M Y H:i:s') : '-' }}</td>
-
-                        <td>
-                            @if($alert->last_email_at)
-                                <span class="badge bg-success">Sent</span>
-                            @else
-                                <span class="badge bg-severe text-dark">Pending</span>
-                            @endif
-                        </td>
-
-
-                    </tr>
-                @endforeach
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
 
@@ -88,16 +39,63 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const escapeText = function (value) {
+            const displayValue = value === null || value === undefined || value === '' ? '-' : value;
+            return $('<div>').text(displayValue).html();
+        };
+
         window.initWarehouseDataTable('#alertsTable', {
+            processing: true,
+            serverSide: true,
             paging: true,
             info: true,
             pageLength: 10,
+            order: [[4, 'desc']],
             language: {
-                search: 'Search alerts:'
-            }
+                search: 'Search alerts:',
+                processing: 'Loading alerts...'
+            },
+            ajax: {
+                url: '{{ route('alerts.data') }}'
+            },
+            columns: [
+                { data: 'device', defaultContent: '-', render: escapeText },
+                {
+                    data: 'type',
+                    defaultContent: 'unknown',
+                    render: function (value) {
+                        const type = String(value || 'unknown').toLowerCase();
+                        const label = type.replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase());
+
+                        if (type.includes('critical') || type.includes('high')) {
+                            return '<span class="badge bg-danger rounded-pill">' + escapeText(label) + '</span>';
+                        }
+
+                        if (type.includes('warn') || type.includes('severe')) {
+                            return '<span class="badge bg-warning text-dark rounded-pill">' + escapeText(label) + '</span>';
+                        }
+
+                        return '<span class="badge bg-secondary rounded-pill">' + escapeText(label) + '</span>';
+                    }
+                },
+                { data: 'message', defaultContent: '-', render: escapeText },
+                { data: 'value', defaultContent: '-', render: escapeText },
+                { data: 'triggered_at', defaultContent: '-', render: escapeText },
+                {
+                    data: 'mail_status',
+                    defaultContent: 'pending',
+                    render: function (value) {
+                        const status = String(value || 'pending').toLowerCase();
+
+                        if (status === 'sent') {
+                            return '<span class="badge bg-success">Sent</span>';
+                        }
+
+                        return '<span class="badge bg-warning text-dark">Pending</span>';
+                    }
+                }
+            ]
         });
-
-
     });
 </script>
 @endsection

@@ -127,7 +127,7 @@ class ReportController extends Controller
                     'device_ip' => $r->device_ip ?: '-',
                     'value' => $r->reading_value,
                     'unit' => $r->unit ?: '-',
-                    'level' => $r->reading_value === null ? 'unknown' : ($r->level ?: 'normal'),
+                    'level' => Reading::normalizeLevel($r->reading_value, $r->level),
                     'status' => $r->status ?: 'offline',
                 ];
             });

@@ -52,27 +52,8 @@ class AdminController extends Controller
 
         $totalWarehouses = Warehouse::count();
 
-        // Active warehouses definition (as per requirement): warehouses that have any reading in last 24 hours.
-        // monitoring system store flow keeps device_id nullable, so infer activity from readings -> warehouse_code/warehouse.
-        $activeWarehouses = Warehouse::query()
-            ->where(function ($q) {
-                $q->whereExists(function ($sub) {
-                    $sub->selectRaw('1')
-                        ->from('readings')
-                        ->where('recorded_at', '>=', now()->subDay())
-                        ->whereColumn('readings.warehouse_code', 'warehouses.warehouse_code');
-                });
-            })
-            ->orWhere(function ($q) {
-                $q->whereExists(function ($sub) {
-                    $sub->selectRaw('1')
-                        ->from('readings')
-                        ->where('recorded_at', '>=', now()->subDay())
-                        ->whereColumn('readings.warehouse', 'warehouses.warehouse_name');
-                });
-            })
-            ->distinct('warehouses.id')
-            ->count('warehouses.id');
+        // Activity is inferred from warehouse readings because device_id may be nullable.
+        $activeWarehouses = Warehouse::activeInLast24Hours()->count();
 
 
         $totalRegions = Region::count();
@@ -80,15 +61,14 @@ class AdminController extends Controller
         // Count each sensor once, using the same latest reading shown on the Devices page.
         $latestDeviceReadingIds = Reading::latestIdsPerSensor();
 
-        $onlineDevices = Reading::query()
+        $deviceStatusCounts = Reading::query()
             ->whereIn('id', clone $latestDeviceReadingIds)
-            ->whereRaw('LOWER(status) = ?', ['online'])
-            ->count();
+            ->selectRaw("SUM(CASE WHEN LOWER(status) = 'online' THEN 1 ELSE 0 END) AS online_count")
+            ->selectRaw("SUM(CASE WHEN LOWER(status) = 'offline' THEN 1 ELSE 0 END) AS offline_count")
+            ->first();
 
-        $offlineDevices = Reading::query()
-            ->whereIn('id', clone $latestDeviceReadingIds)
-            ->whereRaw('LOWER(status) = ?', ['offline'])
-            ->count();
+        $onlineDevices = (int) ($deviceStatusCounts->online_count ?? 0);
+        $offlineDevices = (int) ($deviceStatusCounts->offline_count ?? 0);
 
 
         $criticalActiveAlerts = \App\Models\Alert::where('active', true)

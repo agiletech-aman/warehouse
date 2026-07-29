@@ -102,7 +102,7 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
             trim(($reading->godown ?: '-') . ($reading->compartment ? ' / ' . $reading->compartment : '')),
             $hasReadingValue ? $reading->reading_value : 'N/A',
             $reading->unit ?: '-',
-            $hasReadingValue ? ucfirst((string) ($reading->level ?: 'normal')) : 'Unknown',
+            ucfirst(Reading::normalizeLevel($reading->reading_value, $reading->level)),
             ucfirst((string) ($reading->status ?: 'offline')),
             optional($reading->recorded_at)->format('Y-m-d H:i:s') ?: '-',
         ];

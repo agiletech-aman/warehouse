@@ -11,12 +11,20 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
 
             <div>
-                <h3 class="mb-1">Warehouses</h3>
-                <p class="text-muted mb-0">Track all warehouse details.</p>
+                <h3 class="mb-1">{{ $activeOnly ? 'Active Warehouses' : 'Warehouses' }}</h3>
+                <p class="text-muted mb-0">
+                    {{ $activeOnly ? 'Warehouses with readings in the last 24 hours.' : 'Track all warehouse details.' }}
+                </p>
             </div>
 
             <div class="d-flex gap-2">
-                <a id="warehousesExport" href="{{ route('warehouses.export', request()->only('search')) }}" class="btn btn-outline-primary rounded-pill px-3">
+                @if($activeOnly)
+                    <a href="{{ route('warehouses.index') }}" class="btn btn-outline-secondary rounded-pill px-3">
+                        View All
+                    </a>
+                @endif
+
+                <a id="warehousesExport" href="{{ route('warehouses.export', request()->only(['search', 'active'])) }}" class="btn btn-outline-primary rounded-pill px-3">
                     Export
                 </a>
 
@@ -52,59 +60,7 @@
                 </tr>
                 </thead>
 
-                <tbody>
-                @foreach($warehouses as $warehouse)
-                    <tr>
-                        <td>{{ $warehouse->warehouse_code }}</td>
-                        <td>{{ $warehouse->warehouse_name }}</td>
-                        <td>{{ optional($warehouse->region)->region_name }}</td>
-                        <td>
-                            <div class="fw-semibold">{{ $warehouse->manager_name }}</div>
-                            <div class="text-muted" style="font-size: 0.9rem;">
-                                @if($warehouse->manager_email)
-                                    {{ $warehouse->manager_email }}
-                                @else
-                                    -
-                                @endif
-                                @if($warehouse->manager_phone)
-                                    <span> | {{ $warehouse->manager_phone }}</span>
-                                @endif
-                            </div>
-                        </td>
-                        <td>
-                            @php
-                                $status = strtolower((string) ($warehouse->status ?? ''));
-                            @endphp
-
-                            @if($status === 'active')
-                                <span class="badge bg-success">Active</span>
-                            @elseif($status === 'inactive')
-                                <span class="badge bg-danger">Inactive</span>
-                            @else
-                                <span class="badge bg-secondary">{{ $warehouse->status ?: 'Unknown' }}</span>
-                            @endif
-                        </td>
-                        <td>
-                            <div class="d-flex gap-2">
-                                <a href="{{ route('warehouses.edit', $warehouse->id) }}" class="btn btn-severe btn-sm rounded-pill px-3">
-                                    Edit
-                                </a>
-
-                                <form action="{{ route('warehouses.destroy', $warehouse->id) }}" method="POST" class="d-inline"
-                                      data-confirm-delete
-                                      data-confirm-title="Delete warehouse?"
-                                      data-confirm-message="Are you sure you want to delete {{ $warehouse->warehouse_name }}?">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button class="btn btn-danger btn-sm rounded-pill px-3">
-                                        Delete
-                                    </button>
-                                </form>
-                            </div>
-                        </td>
-                    </tr>
-                @endforeach
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
 
@@ -118,15 +74,88 @@
 @section('scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const escapeText = function (value) {
+            const displayValue = value === null || value === undefined || value === '' ? '-' : value;
+            return $('<div>').text(displayValue).html();
+        };
+        const csrfToken = @json(csrf_token());
+
         const table = window.initWarehouseDataTable('#warehousesTable', {
+            processing: true,
+            serverSide: true,
             paging: true,
             info: true,
             pageLength: 10,
             search: { search: new URLSearchParams(window.location.search).get('search') || '' },
             order: [[0, 'asc']],
             language: {
-                search: 'Search warehouses:'
-            }
+                search: 'Search warehouses:',
+                processing: 'Loading warehouses...'
+            },
+            ajax: {
+                url: '{{ route('warehouses.data') }}',
+                data: function(data) {
+                    const params = new URLSearchParams(window.location.search);
+
+                    if (params.get('active')) {
+                        data.active = params.get('active');
+                    }
+                }
+            },
+            columns: [
+                { data: 'code', defaultContent: '-', render: escapeText },
+                { data: 'name', defaultContent: '-', render: escapeText },
+                { data: 'region', defaultContent: '-', render: escapeText },
+                {
+                    data: 'manager_name',
+                    defaultContent: '-',
+                    render: function(value, type, row) {
+                        let contact = row.manager_email ? escapeText(row.manager_email) : '-';
+
+                        if (row.manager_phone) {
+                            contact += ' | ' + escapeText(row.manager_phone);
+                        }
+
+                        return '<div class="fw-semibold">' + escapeText(value) + '</div>' +
+                            '<div class="text-muted" style="font-size: 0.9rem;">' + contact + '</div>';
+                    }
+                },
+                {
+                    data: 'status',
+                    defaultContent: 'unknown',
+                    render: function(value) {
+                        const status = String(value || 'unknown').toLowerCase();
+
+                        if (status === 'active') {
+                            return '<span class="badge bg-success">Active</span>';
+                        }
+
+                        if (status === 'inactive') {
+                            return '<span class="badge bg-danger">Inactive</span>';
+                        }
+
+                        return '<span class="badge bg-secondary">' +
+                            escapeText(status.charAt(0).toUpperCase() + status.slice(1)) +
+                            '</span>';
+                    }
+                },
+                {
+                    data: null,
+                    orderable: false,
+                    searchable: false,
+                    render: function(value, type, row) {
+                        return '<div class="d-flex gap-2">' +
+                            '<a href="' + escapeText(row.edit_url) + '" class="btn btn-severe btn-sm rounded-pill px-3">Edit</a>' +
+                            '<form action="' + escapeText(row.delete_url) + '" method="POST" class="d-inline" data-confirm-delete' +
+                            ' data-confirm-title="Delete warehouse?" data-confirm-message="Are you sure you want to delete ' +
+                            escapeText(row.delete_label) + '?">' +
+                            '<input type="hidden" name="_token" value="' + escapeText(csrfToken) + '">' +
+                            '<input type="hidden" name="_method" value="DELETE">' +
+                            '<button class="btn btn-danger btn-sm rounded-pill px-3">Delete</button>' +
+                            '</form></div>';
+                    }
+                }
+            ]
         });
 
         table.on('search.dt', function () {

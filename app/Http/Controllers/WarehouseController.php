@@ -12,20 +12,80 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class WarehouseController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $warehouses = Warehouse::with('region')
-            ->latest()
-            ->get();
+        $activeOnly = $request->boolean('active');
 
-        return view('warehouses.index', compact('warehouses'));
+        return view('warehouses.index', compact('activeOnly'));
+    }
+
+    public function data(Request $request)
+    {
+        $draw = (int) $request->query('draw', 1);
+        $start = max((int) $request->query('start', 0), 0);
+        $length = (int) $request->query('length', 10);
+
+        if ($length <= 0 || $length > 100) {
+            $length = 10;
+        }
+
+        $activeOnly = $request->boolean('active');
+        $baseQuery = Warehouse::query()
+            ->when($activeOnly, fn ($query) => $query->activeInLast24Hours());
+
+        $recordsTotal = (clone $baseQuery)->count();
+        $query = (clone $baseQuery)->with('region');
+        $this->applyDataTableSearch($query, $request);
+        $recordsFiltered = (clone $query)->count();
+
+        $orderColumnIndex = (int) data_get($request->query('order', []), '0.column', 0);
+        $orderDirection = strtolower((string) data_get($request->query('order', []), '0.dir', 'asc'));
+        $orderDirection = $orderDirection === 'desc' ? 'desc' : 'asc';
+        $orderColumns = [
+            0 => 'warehouse_code',
+            1 => 'warehouse_name',
+            2 => 'region_uuid',
+            3 => 'manager_name',
+            4 => 'status',
+        ];
+        $orderColumn = $orderColumns[$orderColumnIndex] ?? 'warehouse_code';
+
+        $warehouses = $query
+            ->orderBy($orderColumn, $orderDirection)
+            ->orderBy('id')
+            ->offset($start)
+            ->limit($length)
+            ->get()
+            ->map(fn (Warehouse $warehouse) => [
+                'code' => $warehouse->warehouse_code ?: '-',
+                'name' => $warehouse->warehouse_name ?: '-',
+                'region' => $warehouse->region?->region_name ?: '-',
+                'manager_name' => $warehouse->manager_name ?: '-',
+                'manager_email' => $warehouse->manager_email,
+                'manager_phone' => $warehouse->manager_phone,
+                'status' => strtolower((string) ($warehouse->status ?: 'unknown')),
+                'edit_url' => route('warehouses.edit', $warehouse),
+                'delete_url' => route('warehouses.destroy', $warehouse),
+                'delete_label' => $warehouse->warehouse_name ?: 'this warehouse',
+            ]);
+
+        return response()->json([
+            'draw' => $draw,
+            'recordsTotal' => $recordsTotal,
+            'recordsFiltered' => $recordsFiltered,
+            'data' => $warehouses,
+        ]);
     }
 
     public function export(Request $request)
     {
         return Excel::download(
-            new WarehousesExport(trim((string) $request->query('search', ''))),
-            'warehouses-'.now()->format('Y-m-d-His').'.xlsx'
+            new WarehousesExport(
+                trim((string) $request->query('search', '')),
+                $request->boolean('active')
+            ),
+            ($request->boolean('active') ? 'active-warehouses-' : 'warehouses-')
+                .now()->format('Y-m-d-His').'.xlsx'
         );
     }
 
@@ -152,5 +212,28 @@ class WarehouseController extends Controller
         return redirect()
             ->route('warehouses.index')
             ->with('success', 'Warehouse Deleted Successfully');
+    }
+
+    private function applyDataTableSearch($query, Request $request): void
+    {
+        $value = trim((string) data_get($request->query('search', []), 'value', ''));
+
+        if ($value === '') {
+            return;
+        }
+
+        $like = '%' . $value . '%';
+        $query->where(function ($query) use ($like) {
+            $query->where('warehouse_code', 'like', $like)
+                ->orWhere('warehouse_name', 'like', $like)
+                ->orWhere('manager_name', 'like', $like)
+                ->orWhere('manager_email', 'like', $like)
+                ->orWhere('manager_phone', 'like', $like)
+                ->orWhere('status', 'like', $like)
+                ->orWhereHas('region', function ($regionQuery) use ($like) {
+                    $regionQuery->where('region_code', 'like', $like)
+                        ->orWhere('region_name', 'like', $like);
+                });
+        });
     }
 }

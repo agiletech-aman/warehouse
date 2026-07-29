@@ -11,7 +11,7 @@
                 <div class="col-md-6"><div class="fw-semibold">Sensor Device ID</div><div>{{ $reading->sensor_device_id ?: '-' }}</div></div>
                 <div class="col-md-6"><div class="fw-semibold">Device</div><div>{{ $reading->device_name ?: optional($reading->device)->device_name ?: '-' }}</div></div>
                 <div class="col-md-6"><div class="fw-semibold">Value</div><div>{{ $reading->reading_value !== null ? $reading->reading_value : 'N/A' }} {{ $reading->unit ?: '' }}</div></div>
-                <div class="col-md-6"><div class="fw-semibold">Level</div><div>{{ $reading->reading_value === null ? 'Unknown' : ucfirst($reading->level ?: 'normal') }}</div></div>
+                <div class="col-md-6"><div class="fw-semibold">Level</div><div>{{ ucfirst(\App\Models\Reading::normalizeLevel($reading->reading_value, $reading->level)) }}</div></div>
                 <div class="col-md-6"><div class="fw-semibold">Status</div><div>{{ ucfirst($reading->status ?: 'unknown') }}</div></div>
                 <div class="col-md-6"><div class="fw-semibold">Recorded At</div><div>{{ $reading->recorded_at?->format('d M Y H:i:s') ?: '-' }}</div></div>
                 <div class="col-md-6"><div class="fw-semibold">Region</div><div>{{ $reading->region ?: $reading->region_code ?: '-' }}</div></div>

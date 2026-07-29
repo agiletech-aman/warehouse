@@ -22,11 +22,13 @@
         </div>
 
         <div class="col-md-3">
-            <div class="card border-0 shadow-sm p-4 h-100">
+            <a href="{{ route('warehouses.index', ['active' => 1]) }}"
+               class="card border-0 shadow-sm p-4 h-100 text-decoration-none text-body"
+               aria-label="View active warehouses">
                 <div class="text-muted small text-uppercase">Active Warehouses</div>
                 <div class="display-6 fw-bold mt-2">{{ $activeWarehouses }}</div>
                 <p class="text-muted mb-0">Have readings in last 24 hours.</p>
-            </div>
+            </a>
         </div>
 
         <div class="col-md-3">
@@ -118,7 +120,9 @@
                                     @endif
                                 </td>
                                 <td>
-                                    @if($reading->level === 'critical')
+                                    @if(blank($reading->reading_value))
+                                        <span class="badge bg-secondary">Unknown</span>
+                                    @elseif($reading->level === 'critical')
                                         <span class="badge bg-danger">Critical</span>
                                     @elseif($reading->level === 'severe')
                                         <span class="badge bg-warning text-dark">Severe</span>
@@ -126,7 +130,13 @@
                                         <span class="badge bg-success">Normal</span>
                                     @endif
                                 </td>
-                                <td>{{ $reading->reading_value }} {{ $reading->unit }}</td>
+                                <td>
+                                    @if(blank($reading->reading_value))
+                                        N/A
+                                    @else
+                                        {{ $reading->reading_value }}{{ $reading->unit ? ' '.$reading->unit : '' }}
+                                    @endif
+                                </td>
                                 <td>
                                     @if($reading->status === 'offline')
                                         <span class="badge bg-secondary">Offline</span>

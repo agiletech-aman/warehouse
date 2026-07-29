@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\DevicesExport;
+use App\Exports\DeviceDetailedSummaryExport;
 use App\Models\Device;
 use App\Models\Reading;
 use App\Models\Warehouse;
@@ -16,7 +17,7 @@ class DeviceController extends Controller
         return Reading::latestIdsPerSensor();
     }
 
-    private function applyReadingDeviceFilters($query, Request $request)
+    private function applyReadingDeviceFilters($query, Request $request, bool $includeStatus = true)
     {
         $selectedRegion = trim((string) $request->query('region_code', ''));
         $selectedWarehouse = trim((string) $request->query('warehouse_code', ''));
@@ -40,7 +41,7 @@ class DeviceController extends Controller
             });
         }
 
-        if ($selectedStatus !== '') {
+        if ($includeStatus && $selectedStatus !== '') {
             $query->where('status', $selectedStatus);
         }
 
@@ -78,11 +79,72 @@ class DeviceController extends Controller
         $deviceCountsQuery = Reading::whereIn('id', $this->latestReadingIds());
         $this->applyReadingDeviceFilters($deviceCountsQuery, $request);
 
-        $deviceCounts = [
-            'total' => (clone $deviceCountsQuery)->count(),
-            'online' => (clone $deviceCountsQuery)->where('status', 'online')->count(),
-            'offline' => (clone $deviceCountsQuery)->where('status', 'offline')->count(),
-        ];
+        $summaryReadings = $deviceCountsQuery->get([
+            'device_type',
+            'status',
+            'region',
+            'region_code',
+            'warehouse',
+            'warehouse_code',
+        ]);
+
+        $deviceCounts = $this->statusCounts($summaryReadings);
+
+        // A warehouse is active when it has received at least one reading in the last 24 hours.
+        // Region and warehouse filters apply, while the device status filter is intentionally ignored.
+        $activeWarehouseReadings = Reading::query()
+            ->where('recorded_at', '>=', now()->subDay());
+        $this->applyReadingDeviceFilters($activeWarehouseReadings, $request, false);
+
+        $activeWarehouseCount = $activeWarehouseReadings
+            ->get(['warehouse', 'warehouse_code'])
+            ->filter(fn (Reading $reading) => $reading->warehouse_code || $reading->warehouse)
+            ->unique(fn (Reading $reading) => $reading->warehouse_code ?: $reading->warehouse)
+            ->count();
+
+        $deviceTypeCounts = collect(['CO2', 'PH3'])
+            ->mapWithKeys(fn (string $type) => [
+                $type => $this->statusCounts(
+                    $summaryReadings->filter(
+                        fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === $type
+                    )
+                ),
+            ])
+            ->all();
+
+        $warehouseDeviceCounts = $summaryReadings
+            ->groupBy(function (Reading $reading) {
+                $warehouseCode = trim((string) $reading->warehouse_code);
+                $warehouseName = trim((string) $reading->warehouse);
+
+                return $warehouseCode !== ''
+                    ? 'code:' . $warehouseCode
+                    : 'name:' . ($warehouseName !== '' ? $warehouseName : 'unassigned');
+            })
+            ->map(function ($warehouseReadings) {
+                /** @var Reading $warehouse */
+                $warehouse = $warehouseReadings->first();
+                $warehouseName = trim((string) $warehouse->warehouse);
+                $warehouseCode = trim((string) $warehouse->warehouse_code);
+                $regionName = trim((string) $warehouse->region);
+                $regionCode = trim((string) $warehouse->region_code);
+
+                return [
+                    'name' => $warehouseName !== '' ? $warehouseName : ($warehouseCode !== '' ? $warehouseCode : 'Unassigned'),
+                    'code' => $warehouseCode,
+                    'region_name' => $regionName !== '' ? $regionName : ($regionCode !== '' ? $regionCode : '-'),
+                    'region_code' => $regionCode,
+                    'overall' => $this->statusCounts($warehouseReadings),
+                    'CO2' => $this->statusCounts($warehouseReadings->filter(
+                        fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'CO2'
+                    )),
+                    'PH3' => $this->statusCounts($warehouseReadings->filter(
+                        fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'PH3'
+                    )),
+                ];
+            })
+            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values();
 
         return view('devices.index', compact(
             'regions',
@@ -90,7 +152,10 @@ class DeviceController extends Controller
             'selectedRegion',
             'selectedWarehouse',
             'selectedStatus',
-            'deviceCounts'
+            'deviceCounts',
+            'activeWarehouseCount',
+            'deviceTypeCounts',
+            'warehouseDeviceCounts'
         ));
     }
 
@@ -133,6 +198,7 @@ class DeviceController extends Controller
                 'unit',
                 'level',
                 'status',
+                'recorded_at',
             ])
             ->map(function (Reading $reading) {
                 return [
@@ -146,7 +212,8 @@ class DeviceController extends Controller
                     'location' => $this->joinLocationParts($reading->godown, $reading->compartment),
                     'value' => $reading->reading_value,
                     'unit' => $reading->unit,
-                    'level' => $reading->reading_value === null ? 'unknown' : ($reading->level ?: 'normal'),
+                    'recorded_at' => $reading->recorded_at?->format('d M Y H:i:s') ?: '-',
+                    'level' => Reading::normalizeLevel($reading->reading_value, $reading->level),
                     'status' => $reading->status ?: 'offline',
                     'delete_url' => route('devices.reading-destroy', $reading),
                     'delete_label' => $reading->device_name ?: ($reading->sensor_device_id ?: 'this device'),
@@ -166,6 +233,16 @@ class DeviceController extends Controller
         return Excel::download(
             new DevicesExport($request->only(['region_code', 'warehouse_code', 'status', 'search'])),
             'devices-' . now()->format('Y-m-d-His') . '.xlsx'
+        );
+    }
+
+    public function detailedSummaryExport(Request $request)
+    {
+        return Excel::download(
+            new DeviceDetailedSummaryExport(
+                $request->only(['region_code', 'warehouse_code', 'status'])
+            ),
+            'device-detailed-summary-'.now()->format('Y-m-d-His').'.xlsx'
         );
     }
 
@@ -313,5 +390,23 @@ class DeviceController extends Controller
         ], fn ($part) => $part !== ''));
 
         return $parts ? implode(' / ', $parts) : '-';
+    }
+
+    private function statusCounts($readings): array
+    {
+        return [
+            'total' => $readings->count(),
+            'online' => $readings->filter(
+                fn (Reading $reading) => strtolower(trim((string) $reading->status)) === 'online'
+            )->count(),
+            'offline' => $readings->filter(
+                fn (Reading $reading) => strtolower(trim((string) $reading->status)) === 'offline'
+            )->count(),
+        ];
+    }
+
+    private function normalizedDeviceType(?string $deviceType): string
+    {
+        return strtoupper(str_replace([' ', '-', '_', '₂', '₃'], ['', '', '', '2', '3'], trim((string) $deviceType)));
     }
 }

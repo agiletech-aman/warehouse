@@ -2,6 +2,34 @@
 
 @section('page-title', 'Devices')
 
+@section('styles')
+<style>
+    .device-summary-metric + .device-summary-metric {
+        border-left: 1px solid #e9ecef;
+    }
+
+    .device-summary-toggle .summary-chevron {
+        transition: transform .2s ease;
+    }
+
+    .device-summary-toggle[aria-expanded="true"] .summary-chevron {
+        transform: rotate(180deg);
+    }
+
+    .device-type-card {
+        background: #f8fafc;
+        border: 1px solid #e9ecef;
+    }
+
+    @media (max-width: 767.98px) {
+        .device-summary-metric + .device-summary-metric {
+            border-left: 0;
+            border-top: 1px solid #e9ecef;
+        }
+    }
+</style>
+@endsection
+
 @section('content')
 
 <div class="content-shell">
@@ -21,28 +49,128 @@
         <div class="alert alert-success rounded-3 shadow-sm">{{ session('success') }}</div>
         @endif
 
-        <div class="row g-4 mb-4">
-            <div class="col-md-4">
-                <div class="card border-0 shadow-sm p-4 h-100">
+        <div class="card border-0 shadow-sm mb-4 overflow-hidden">
+            <div class="card-body p-0">
+                <div class="px-4 pt-4">
+                    <h5 class="fw-bold mb-1">Overall Summary</h5>
+                    <p class="text-muted small mb-0">Latest status of devices from sensor readings.</p>
+                </div>
+
+                <div class="row g-0 mt-3">
+                    <div class="col-md-3 device-summary-metric p-4">
                     <div class="text-muted small text-uppercase">Total Devices</div>
                     <div class="display-6 fw-bold mt-2">{{ number_format($deviceCounts['total'] ?? 0) }}</div>
                     <p class="text-muted mb-0">Latest devices from readings.</p>
-                </div>
-            </div>
+                    </div>
 
-            <div class="col-md-4">
-                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="col-md-3 device-summary-metric p-4">
                     <div class="text-muted small text-uppercase">Online Devices</div>
                     <div class="display-6 fw-bold mt-2">{{ number_format($deviceCounts['online'] ?? 0) }}</div>
                     <p class="text-muted mb-0">Devices currently online.</p>
-                </div>
-            </div>
+                    </div>
 
-            <div class="col-md-4">
-                <div class="card border-0 shadow-sm p-4 h-100">
+                    <div class="col-md-3 device-summary-metric p-4">
                     <div class="text-muted small text-uppercase">Offline Devices</div>
                     <div class="display-6 fw-bold mt-2">{{ number_format($deviceCounts['offline'] ?? 0) }}</div>
                     <p class="text-muted mb-0">Devices currently offline.</p>
+                    </div>
+
+                    <div class="col-md-3 device-summary-metric p-4">
+                        <div class="text-muted small text-uppercase">Active Warehouses</div>
+                        <div class="display-6 fw-bold mt-2">{{ number_format($activeWarehouseCount ?? 0) }}</div>
+                        <p class="text-muted mb-0">Warehouses reporting in the last 24 hours.</p>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary rounded-0 w-100 py-3 device-summary-toggle"
+                    type="button" data-bs-toggle="collapse" data-bs-target="#detailedDeviceSummary"
+                    aria-expanded="false" aria-controls="detailedDeviceSummary">
+                    <span>View Detailed Summary</span>
+                    <i class="fa-solid fa-chevron-down ms-2 summary-chevron"></i>
+                </button>
+
+                <div class="collapse" id="detailedDeviceSummary">
+                    <div class="p-4 border-top">
+                        <h6 class="fw-bold mb-3">Device Type Summary</h6>
+                        <div class="row g-3 mb-4">
+                            @foreach(['CO2' => 'CO₂ Devices', 'PH3' => 'PH₃ Devices'] as $type => $label)
+                            <div class="col-lg-6">
+                                <div class="device-type-card rounded-3 p-3 h-100">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span class="fw-semibold">{{ $label }}</span>
+                                        <span class="badge bg-primary rounded-pill">{{ number_format($deviceTypeCounts[$type]['total'] ?? 0) }} total</span>
+                                    </div>
+                                    <div class="row text-center g-2">
+                                        <div class="col-6">
+                                            <div class="text-success fw-bold fs-4">{{ number_format($deviceTypeCounts[$type]['online'] ?? 0) }}</div>
+                                            <div class="text-muted small">Online</div>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="text-secondary fw-bold fs-4">{{ number_format($deviceTypeCounts[$type]['offline'] ?? 0) }}</div>
+                                            <div class="text-muted small">Offline</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            @endforeach
+                        </div>
+
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                            <h6 class="fw-bold mb-0">Warehouse-wise Device Summary</h6>
+                            <a id="detailedDevicesExport"
+                                href="{{ route('devices.detailed-summary.export', request()->only(['region_code', 'warehouse_code', 'status'])) }}"
+                                class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                                Export Detailed Summary
+                            </a>
+                        </div>
+                        <div class="table-responsive border rounded-3">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th rowspan="2" class="align-middle">Warehouse</th>
+                                        <th rowspan="2" class="align-middle">Region</th>
+                                        <th colspan="3" class="text-center border-start">Overall</th>
+                                        <th colspan="3" class="text-center border-start">CO₂</th>
+                                        <th colspan="3" class="text-center border-start">PH₃</th>
+                                    </tr>
+                                    <tr>
+                                        @foreach(range(1, 3) as $group)
+                                        <th class="text-center border-start">Total</th>
+                                        <th class="text-center">Online</th>
+                                        <th class="text-center">Offline</th>
+                                        @endforeach
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @forelse($warehouseDeviceCounts as $warehouseSummary)
+                                    <tr>
+                                        <td>
+                                            <div class="fw-semibold">{{ $warehouseSummary['name'] }}</div>
+                                            @if($warehouseSummary['code'] && $warehouseSummary['code'] !== $warehouseSummary['name'])
+                                            <div class="text-muted small">{{ $warehouseSummary['code'] }}</div>
+                                            @endif
+                                        </td>
+                                        <td>
+                                            <div class="fw-semibold">{{ $warehouseSummary['region_name'] }}</div>
+                                            @if($warehouseSummary['region_code'] && $warehouseSummary['region_code'] !== $warehouseSummary['region_name'])
+                                            <div class="text-muted small">{{ $warehouseSummary['region_code'] }}</div>
+                                            @endif
+                                        </td>
+                                        @foreach(['overall', 'CO2', 'PH3'] as $group)
+                                        <td class="text-center border-start fw-semibold">{{ number_format($warehouseSummary[$group]['total']) }}</td>
+                                        <td class="text-center text-success">{{ number_format($warehouseSummary[$group]['online']) }}</td>
+                                        <td class="text-center text-secondary">{{ number_format($warehouseSummary[$group]['offline']) }}</td>
+                                        @endforeach
+                                    </tr>
+                                    @empty
+                                    <tr>
+                                        <td colspan="11" class="text-center text-muted py-4">No warehouse device data found.</td>
+                                    </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -106,6 +234,7 @@
                         <th>Type</th>
                         <th>Location</th>
                         <th>Latest Reading</th>
+                        <th>Latest Reading Time</th>
                         <th>Status</th>
                         <th class="text-center">Action</th>
                     </tr>
@@ -171,6 +300,17 @@
         const deleteModal = document.getElementById('deleteDeviceModal');
         const deleteForm = document.getElementById('deleteDeviceForm');
         const deleteDeviceName = document.getElementById('deleteDeviceName');
+        const detailedSummary = document.getElementById('detailedDeviceSummary');
+        const detailedSummaryButtonText = document.querySelector('.device-summary-toggle span');
+
+        if (detailedSummary && detailedSummaryButtonText) {
+            detailedSummary.addEventListener('shown.bs.collapse', function() {
+                detailedSummaryButtonText.textContent = 'Hide Detailed Summary';
+            });
+            detailedSummary.addEventListener('hidden.bs.collapse', function() {
+                detailedSummaryButtonText.textContent = 'View Detailed Summary';
+            });
+        }
 
         if (deleteModal && deleteModal.parentElement !== document.body) {
             document.body.appendChild(deleteModal);
@@ -241,6 +381,7 @@
                         return escapeText(row.unit ? value + ' ' + row.unit : value);
                     }
                 },
+                { data: 'recorded_at', defaultContent: '-', render: escapeText },
                 {
                     data: 'status',
                     defaultContent: 'offline',
@@ -284,10 +425,12 @@
         });
 
         table.on('search.dt', function () {
-            const url = new URL(document.getElementById('devicesExport').href);
             const search = table.search();
+
+            const exportLink = document.getElementById('devicesExport');
+            const url = new URL(exportLink.href);
             search ? url.searchParams.set('search', search) : url.searchParams.delete('search');
-            document.getElementById('devicesExport').href = url.toString();
+            exportLink.href = url.toString();
         });
 
     });

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -67,5 +68,26 @@ class Warehouse extends Model
     public function devices()
     {
         return $this->hasMany(Device::class);
+    }
+
+    public function scopeActiveInLast24Hours(Builder $query): Builder
+    {
+        $activeSince = now()->subDay();
+
+        return $query->where(function (Builder $query) use ($activeSince) {
+            $query->whereExists(function ($readingQuery) use ($activeSince) {
+                $readingQuery->selectRaw('1')
+                    ->from('readings')
+                    ->whereNull('readings.deleted_at')
+                    ->where('readings.recorded_at', '>=', $activeSince)
+                    ->whereColumn('readings.warehouse_code', 'warehouses.warehouse_code');
+            })->orWhereExists(function ($readingQuery) use ($activeSince) {
+                $readingQuery->selectRaw('1')
+                    ->from('readings')
+                    ->whereNull('readings.deleted_at')
+                    ->where('readings.recorded_at', '>=', $activeSince)
+                    ->whereColumn('readings.warehouse', 'warehouses.warehouse_name');
+            });
+        });
     }
 }

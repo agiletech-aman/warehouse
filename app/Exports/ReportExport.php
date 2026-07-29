@@ -87,7 +87,7 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
             'device_ip' => $row->device_ip ?: '-',
             'value' => $row->reading_value ?? 'N/A',
             'unit' => $row->unit ?: '-',
-            'level' => $row->reading_value === null ? 'unknown' : ($row->level ?: 'normal'),
+            'level' => Reading::normalizeLevel($row->reading_value, $row->level),
             'status' => $row->status ?: 'offline',
         ];
 

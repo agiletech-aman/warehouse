@@ -152,7 +152,7 @@ class DeviceController extends Controller
                 'latest_reading' => $reading->reading_value,
                 'reading_value' => $reading->reading_value,
                 'unit' => $reading->unit,
-                'level' => $reading->reading_value === null ? 'unknown' : ($reading->level ?: 'normal'),
+                'level' => Reading::normalizeLevel($reading->reading_value, $reading->level),
                 'status' => $reading->status ?: 'offline',
                 'recorded_at' => $reading->recorded_at,
                 'created_at' => $reading->created_at,

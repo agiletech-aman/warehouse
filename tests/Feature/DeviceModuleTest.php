@@ -120,4 +120,81 @@ class DeviceModuleTest extends TestCase
             ->assertJsonPath('recordsFiltered', 12)
             ->assertJsonCount(5, 'data');
     }
+
+    public function test_devices_view_shows_the_latest_reading_timestamp(): void
+    {
+        $session = $this->adminSession();
+        $recordedAt = now()->startOfSecond();
+
+        Reading::create([
+            'sensor_device_id' => 'DEVICE-TIME',
+            'device_name' => 'Timestamp Device',
+            'unit' => 'ppm',
+            'reading_value' => 24,
+            'level' => 'normal',
+            'status' => 'online',
+            'recorded_at' => $recordedAt,
+        ]);
+
+        $this->withSession($session)
+            ->get('/devices')
+            ->assertOk()
+            ->assertSee('Latest Reading Time');
+
+        $this->withSession($session)
+            ->getJson('/devices/data?draw=1&start=0&length=10')
+            ->assertOk()
+            ->assertJsonPath('data.0.recorded_at', $recordedAt->format('d M Y H:i:s'));
+    }
+
+    public function test_device_summary_is_split_by_type_and_warehouse(): void
+    {
+        $session = $this->adminSession();
+
+        $rows = [
+            ['CO2-A', 'CO2', 'online', 'Warehouse A', 'WH-A'],
+            ['CO2-B', 'CO₂', 'offline', 'Warehouse A', 'WH-A'],
+            ['PH3-A', 'PH3', 'online', 'Warehouse B', 'WH-B'],
+            ['PH3-B', 'PH₃', 'offline', 'Warehouse B', 'WH-B'],
+        ];
+
+        foreach ($rows as [$deviceId, $deviceType, $status, $warehouse, $warehouseCode]) {
+            Reading::create([
+                'sensor_device_id' => $deviceId,
+                'device_name' => $deviceId,
+                'device_type' => $deviceType,
+                'region' => 'North Region',
+                'region_code' => 'RE-NORTH',
+                'warehouse' => $warehouse,
+                'warehouse_code' => $warehouseCode,
+                'reading_value' => 10,
+                'unit' => 'ppm',
+                'status' => $status,
+                'recorded_at' => now(),
+            ]);
+        }
+
+        $response = $this->withSession($session)->get('/devices');
+
+        $response->assertOk()
+            ->assertSee('Overall Summary')
+            ->assertSee('View Detailed Summary')
+            ->assertSee('Warehouse-wise Device Summary')
+            ->assertViewHas('deviceCounts', [
+                'total' => 4,
+                'online' => 2,
+                'offline' => 2,
+            ])
+            ->assertViewHas('activeWarehouseCount', 2)
+            ->assertViewHas('deviceTypeCounts', function (array $counts) {
+                return $counts['CO2'] === ['total' => 2, 'online' => 1, 'offline' => 1]
+                    && $counts['PH3'] === ['total' => 2, 'online' => 1, 'offline' => 1];
+            })
+            ->assertViewHas('warehouseDeviceCounts', function ($warehouses) {
+                return $warehouses->count() === 2
+                    && $warehouses->firstWhere('code', 'WH-A')['CO2']['total'] === 2
+                    && $warehouses->firstWhere('code', 'WH-B')['PH3']['total'] === 2
+                    && $warehouses->firstWhere('code', 'WH-A')['region_code'] === 'RE-NORTH';
+            });
+    }
 }

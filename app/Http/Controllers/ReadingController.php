@@ -75,7 +75,7 @@ class ReadingController extends Controller
                         $reading->warehouse ?: $reading->warehouse_code
                     ),
                     'godown_compartment' => $this->joinLocationParts($reading->godown, $reading->compartment),
-                    'level' => $reading->reading_value === null ? 'unknown' : ($reading->level ?: 'normal'),
+                    'level' => Reading::normalizeLevel($reading->reading_value, $reading->level),
                     'status' => $reading->status ?: 'unknown',
                     'recorded_at' => $reading->recorded_at ? $reading->recorded_at->format('d M Y H:i:s') : '-',
                 ];

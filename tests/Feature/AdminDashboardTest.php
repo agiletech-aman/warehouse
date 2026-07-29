@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Admin;
+use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,5 +44,30 @@ class AdminDashboardTest extends TestCase
             ->assertStatus(200)
             ->assertSee('admin/dashboard', false)
             ->assertSeeText('0');
+    }
+
+    public function test_dashboard_shows_na_when_latest_reading_has_no_value(): void
+    {
+        $admin = Admin::factory()->create();
+
+        Reading::create([
+            'sensor_device_id' => 'PH3-4',
+            'device_name' => 'PH3-4',
+            'reading_value' => '',
+            'unit' => 'ppm',
+            'level' => 'normal',
+            'status' => 'offline',
+            'recorded_at' => now(),
+        ]);
+
+        $this->withSession([
+            'admin_id' => $admin->id,
+            'admin_name' => $admin->name,
+            'admin_email' => $admin->email,
+        ])->get('/admin/dashboard')
+            ->assertOk()
+            ->assertSeeText('N/A')
+            ->assertSeeText('Unknown')
+            ->assertDontSeeText('N/A ppm');
     }
 }

@@ -185,7 +185,47 @@ class ReadingController extends Controller
     {
         $rows = [];
 
-        foreach ($request->readings as $reading) {
+        foreach ($request->readings as $index => $reading) {
+            $readingValue = $reading['value'] ?? null;
+            $incomingLevel = null;
+            $incomingLevelKey = null;
+
+            foreach (['level', 'Level', 'severity', 'reading_level'] as $candidateKey) {
+                if (array_key_exists($candidateKey, $reading)) {
+                    $incomingLevel = trim((string) $reading[$candidateKey]);
+                    $incomingLevelKey = $candidateKey;
+                    break;
+                }
+            }
+
+            $storedLevel = match (strtolower((string) $incomingLevel)) {
+                'warn', 'warning' => 'severe',
+                'crit' => 'critical',
+                '' => null,
+                default => strtolower($incomingLevel),
+            };
+
+            if ($readingValue !== null && is_numeric($readingValue)) {
+                if ($storedLevel === null) {
+                    Log::warning('Numeric sensor reading received without a level; push accepted for debugging.', [
+                        'reading_index' => $index,
+                        'sensor_device_id' => $reading['device_id'] ?? null,
+                        'reading_value' => $readingValue,
+                        'status' => $reading['status'] ?? null,
+                        'received_keys' => array_keys($reading),
+                    ]);
+                } elseif (!in_array($storedLevel, ['normal', 'severe', 'critical'], true)) {
+                    Log::warning('Numeric sensor reading received with an unrecognized level; push accepted unchanged.', [
+                        'reading_index' => $index,
+                        'sensor_device_id' => $reading['device_id'] ?? null,
+                        'reading_value' => $readingValue,
+                        'status' => $reading['status'] ?? null,
+                        'level_key' => $incomingLevelKey,
+                        'level_received' => $incomingLevel,
+                    ]);
+                }
+            }
+
             $row = [
                 'key' => $request->key,
                 'sensor_device_id' => $reading['device_id'] ?? null,
@@ -201,8 +241,8 @@ class ReadingController extends Controller
                 'warehouse_code' => $reading['warehouse_code'] ?? null,
                 'godown' => $reading['godown'] ?? null,
                 'compartment' => $reading['compartment'] ?? null,
-                'reading_value' => $reading['value'] ?? null,
-                'level' => strtolower($reading['level'] ?? 'normal'),
+                'reading_value' => $readingValue,
+                'level' => $storedLevel,
                 'status' => strtolower($reading['status'] ?? 'online'),
                 'recorded_at' => $reading['recorded_at'] ?? now(),
             ];
@@ -273,7 +313,12 @@ class ReadingController extends Controller
             $type = null;
             $message = null;
 
-            if ($level === 'critical') {
+            if (strtolower($status) === 'offline') {
+                // An offline device is not providing a usable reading, so its
+                // reading severity cannot be determined.
+                $type = 'unknown';
+                $message = 'Device is OFFLINE';
+            } elseif ($level === 'critical') {
                 $type = 'critical';
                 $message = 'Critical Alert: Immediate action required.';
             } elseif ($level === 'severe') {
@@ -281,18 +326,13 @@ class ReadingController extends Controller
                 $message = 'Severe: Parameter out of range.';
             }
 
-            if ($type === null && $status === 'offline') {
-                $type = 'severe';
-                $message = 'Device is OFFLINE';
-            }
-
-            $legacyAlertType = $status === 'offline'
+            $legacyAlertType = strtolower($status) === 'offline'
                 ? 'device_offline'
                 : ($type === 'critical' ? 'high_co2' : 'high_phosphorus');
 
             if ($type === null) {
                 $closed = Alert::where('device_id', $sensorDeviceId)
-                    ->whereIn('type', ['severe', 'critical'])
+                    ->whereIn('type', ['severe', 'critical', 'unknown'])
                     ->where('active', true)
                     ->update(['active' => false]);
 
@@ -300,7 +340,7 @@ class ReadingController extends Controller
                 continue;
             }
 
-            $alertTypeLabel = $type === 'critical' ? 'CRITICAL' : 'SEVERE';
+            $alertTypeLabel = strtoupper($type);
 
             // Fetch Warehouse & Region Data
             $deviceForMail = $resolvedDeviceId ? \App\Models\Device::with('warehouse.region')->find($resolvedDeviceId) : null;
