@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -12,8 +12,10 @@ class Warehouse extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'uuid',
-        'region_uuid',
+        'frs_id',
+        'nms_id',
+        'region_frs_id',
+        'region_nms_id',
         'region_id',
         'warehouse_code',
         'warehouse_name',
@@ -44,25 +46,31 @@ class Warehouse extends Model
     protected static function booted(): void
     {
         static::saving(function (Warehouse $warehouse) {
-            if ($warehouse->region_uuid) {
-                $regionId = Region::where('uuid', $warehouse->region_uuid)->value('id');
+            $region = null;
 
-                if ($regionId !== null) {
-                    $warehouse->region_id = $regionId;
-                }
+            if ($warehouse->region_frs_id) {
+                $region = Region::where('frs_id', $warehouse->region_frs_id)->first();
+            } elseif ($warehouse->region_nms_id) {
+                $region = Region::where('nms_id', $warehouse->region_nms_id)->first();
             } elseif ($warehouse->region_id) {
-                $warehouse->region_uuid = Region::whereKey($warehouse->region_id)->value('uuid');
+                $region = Region::find($warehouse->region_id);
+            }
+
+            if ($region) {
+                $warehouse->region_id = $region->id;
+                $warehouse->region_frs_id = $region->frs_id;
+                $warehouse->region_nms_id = $region->nms_id;
             }
         });
 
         static::creating(function (Warehouse $warehouse) {
-            $warehouse->uuid ??= (string) Str::uuid7();
+            $warehouse->frs_id ??= (string) Str::uuid7();
         });
     }
 
     public function region()
     {
-        return $this->belongsTo(Region::class, 'region_uuid', 'uuid');
+        return $this->belongsTo(Region::class, 'region_frs_id', 'frs_id');
     }
 
     public function devices()

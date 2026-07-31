@@ -44,7 +44,7 @@ class WarehouseController extends Controller
         $orderColumns = [
             0 => 'warehouse_code',
             1 => 'warehouse_name',
-            2 => 'region_uuid',
+            2 => 'region_frs_id',
             3 => 'manager_name',
             4 => 'status',
         ];

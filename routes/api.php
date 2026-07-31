@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DeviceController;
+use App\Http\Controllers\Api\FnsDetectionController;
 use App\Http\Controllers\Api\Master\AlertController as MasterAlertController;
 use App\Http\Controllers\Api\Master\RegionController as MasterRegionController;
 use App\Http\Controllers\Api\Master\WarehouseController as MasterWarehouseController;
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\Route;
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::post('/readings', [ReadingController::class, 'store']);
+Route::get('/fns/detections', [FnsDetectionController::class, 'index']);
+Route::post('/fns/detections', [FnsDetectionController::class, 'store']);
 
 // Reading filters + severity counts (single API)
 Route::get('/readings/summary', [ReadingController::class, 'indexWithSummary']);
@@ -30,6 +33,7 @@ Route::get('/master-alerts/summary', [MasterAlertController::class, 'summaryApi'
 Route::post('/master-alert-summary', [MasterAlertController::class, 'storeSummaryApi']);
 Route::get('/master-alert-summary/dashboard', [MasterAlertController::class, 'dashboardApi']);
 Route::get('/master-alerts/devices', [MasterAlertController::class, 'devicesApi']);
+Route::get('/master-alerts/devices/{warehouseNmsId}', [MasterAlertController::class, 'devicesApi']);
 Route::get('/master-alerts/states', [MasterAlertController::class, 'statesApi']);
 Route::get('/master-alerts/states/{state}/locations', [MasterWarehouseController::class, 'locationsByState']);
 Route::get('/master-alerts/export', [MasterAlertController::class, 'exportExcel']);

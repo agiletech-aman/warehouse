@@ -108,7 +108,8 @@
             flex-shrink: 0;
         }
 
-        .menu li a {
+        .menu li a,
+        .menu-toggle {
             text-decoration: none;
             color: #d1d5db;
             display: flex;
@@ -118,17 +119,69 @@
             padding: 15px 20px;
             transition: .3s;
             white-space: nowrap;
+            border: 0;
+            background: transparent;
+            width: 100%;
+            cursor: pointer;
+            text-align: left;
         }
 
-        .sidebar.collapsed .menu li a {
+        .sidebar.collapsed .menu li a,
+        .sidebar.collapsed .menu-toggle {
             justify-content: center;
             gap: 0;
             padding: 14px 0;
         }
 
-        .menu li a:hover {
+        .menu li a:hover,
+        .menu-toggle:hover,
+        .menu li a.active,
+        .menu-toggle.active {
             background: #1f2937;
             color: white;
+        }
+
+        .submenu-chevron {
+            margin-left: auto;
+            font-size: 12px;
+            transition: transform .2s ease;
+        }
+
+        .menu-toggle[aria-expanded="true"] .submenu-chevron {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            padding: 4px 0 2px;
+            margin: 0;
+        }
+
+        .submenu.open {
+            display: block;
+        }
+
+        .submenu li {
+            margin-bottom: 2px;
+        }
+
+        .submenu li a {
+            padding: 10px 20px 10px 55px;
+            font-size: 14px;
+            gap: 10px;
+        }
+
+        .submenu .icon {
+            min-width: 22px;
+            width: 22px;
+            height: 22px;
+            font-size: 14px;
+        }
+
+        .sidebar.collapsed .submenu,
+        .sidebar.collapsed .submenu-chevron {
+            display: none;
         }
 
         .icon {
@@ -582,14 +635,6 @@
                 </li>
 
                 <li>
-                    <a href="{{ route('hierarchy.index') }}"
-                        class="{{ request()->routeIs('hierarchy.*') ? 'active' : '' }}">
-                        <span class="icon">🧩</span>
-                        <span class="menu-text">Hierarchy</span>
-                    </a>
-                </li>
-
-                <li>
                     <a href="{{ route('warehouses.index') }}"
                         class="{{ request()->routeIs('warehouses.*') ? 'active' : '' }}">
                         <span class="icon">🏬</span>
@@ -598,35 +643,65 @@
                 </li>
 
                 <li>
-                    <a href="{{ route('readings.index') }}"
-                        class="{{ request()->routeIs('readings.*') ? 'active' : '' }}">
-                        <span class="icon">📈</span>
-                        <span class="menu-text">Readings</span>
- </a>
-                </li>
-
-                <li>
-                    <a href="{{ route('devices.index') }}"
-                        class="{{ request()->routeIs('devices.*') ? 'active' : '' }}">
-                        <span class="icon">📟</span>
-                        <span class="menu-text">Devices</span>
+                    <a href="{{ route('hierarchy.index') }}"
+                        class="{{ request()->routeIs('hierarchy.*') ? 'active' : '' }}">
+                        <span class="icon">🧩</span>
+                        <span class="menu-text">Hierarchy</span>
                     </a>
                 </li>
 
                 <li>
-                    <a href="{{ route('alerts.index') }}"
-                        class="{{ request()->routeIs('alerts.*') ? 'active' : '' }}">
-                        <span class="icon">🚨</span>
-                        <span class="menu-text">Alerts</span>
+                    <a href="{{ route('fns-detections.index') }}"
+                        class="{{ request()->routeIs('fns-detections.*') ? 'active' : '' }}">
+                        <span class="icon">📷</span>
+                        <span class="menu-text">FNS Detections</span>
                     </a>
                 </li>
 
+                @php
+                    $iotMenuActive = request()->routeIs('readings.*', 'devices.*', 'alerts.*', 'reports.*');
+                @endphp
                 <li>
-                    <a href="{{ route('reports.index') }}"
-                        class="{{ request()->routeIs('admin.reports*') ? 'active' : '' }}">
-                        <span class="icon">🧾</span>
-                        <span class="menu-text">Reports</span>
-                    </a>
+                    <button type="button"
+                        id="iotMenuToggle"
+                        class="menu-toggle {{ $iotMenuActive ? 'active' : '' }}"
+                        aria-expanded="{{ $iotMenuActive ? 'true' : 'false' }}"
+                        aria-controls="iotSubmenu">
+                        <span class="icon">📡</span>
+                        <span class="menu-text">IOT Sensors</span>
+                        <span class="menu-text submenu-chevron">▼</span>
+                    </button>
+
+                    <ul id="iotSubmenu" class="submenu {{ $iotMenuActive ? 'open' : '' }}">
+                        <li>
+                            <a href="{{ route('readings.index') }}"
+                                class="{{ request()->routeIs('readings.*') ? 'active' : '' }}">
+                                <span class="icon">📈</span>
+                                <span class="menu-text">Readings</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('devices.index') }}"
+                                class="{{ request()->routeIs('devices.*') ? 'active' : '' }}">
+                                <span class="icon">📟</span>
+                                <span class="menu-text">Devices</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('alerts.index') }}"
+                                class="{{ request()->routeIs('alerts.*') ? 'active' : '' }}">
+                                <span class="icon">🚨</span>
+                                <span class="menu-text">Alerts</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('reports.index') }}"
+                                class="{{ request()->routeIs('reports.*') ? 'active' : '' }}">
+                                <span class="icon">🧾</span>
+                                <span class="menu-text">Reports</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
 
                 <li>
@@ -974,6 +1049,19 @@
             sidebar.classList.toggle('collapsed', isCollapsed);
             main.classList.toggle('expand', isCollapsed);
         }
+
+        const iotMenuToggle = document.getElementById('iotMenuToggle');
+        const iotSubmenu = document.getElementById('iotSubmenu');
+
+        iotMenuToggle.addEventListener('click', function() {
+            if (sidebar.classList.contains('collapsed')) {
+                applySidebarState(false);
+                localStorage.setItem(STORAGE_KEY, 'false');
+            }
+
+            const isOpen = iotSubmenu.classList.toggle('open');
+            iotMenuToggle.setAttribute('aria-expanded', String(isOpen));
+        });
 
         document.getElementById('toggleBtn').onclick = function() {
             const isCollapsed = !sidebar.classList.contains('collapsed');

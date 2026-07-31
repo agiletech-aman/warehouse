@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Master;
 use App\Http\Controllers\Controller;
 use App\Models\MasterAlertSummary;
 use App\Models\Region;
+use App\Models\Warehouse;
 use App\Services\MasterAlertService;
 use App\Services\MasterAlertSummaryService;
 use Carbon\Carbon;
@@ -124,37 +125,78 @@ class AlertController extends Controller
     public function statesApi(): JsonResponse
     {
         $states = Region::query()
-            ->whereNotNull('uuid')
+            ->whereNotNull('frs_id')
             ->orderBy('region_name')
-            ->get(['uuid', 'region_name'])
-            ->filter(fn (Region $region) => ctype_digit((string) $region->uuid))
-            ->pluck('region_name')
-            ->map(fn (string $state) => Str::title(strtolower(trim($state))))
-            ->unique()
+            ->get(['id', 'frs_id', 'nms_id', 'region_name'])
+            ->filter(fn (Region $region) => ctype_digit((string) $region->frs_id))
+            ->map(fn (Region $region) => [
+                'base_id' => $region->id,
+                'frs_id' => $region->frs_id,
+                'nms_id' => $region->nms_id,
+                'name' => Str::title(strtolower(trim($region->region_name))),
+            ])
+            ->unique('name')
             ->values();
 
         return response()->json($states);
     }
 
-    public function devicesApi(Request $request, MasterAlertService $alertService): JsonResponse
+    public function devicesApi(
+        Request $request,
+        MasterAlertService $alertService,
+        ?string $warehouseNmsId = null
+    ): JsonResponse
     {
-        $response = $this->getAlerts($request, $alertService, 10000);
-        $gasPrefix = $response['deviceTypeId'] === self::DEVICE_PH3 ? 'PH₃-' : 'CO₂-';
+        $warehouseNmsId ??= $request->get(
+            'warehouseNmsId',
+            $request->get(
+                'warehouse_nms_id',
+                $request->get('nms_id', $request->get('warehouseId', $request->get('warehouse_id')))
+            )
+        );
+        $warehouse = null;
 
-        $devices = collect($response['data'] ?? [])
-            ->map(function (array $alert) use ($gasPrefix) {
-                $deviceName = ($alert['shadName'] ?? '').($alert['columnName'] ?? '');
+        if ($warehouseNmsId !== null && $warehouseNmsId !== '') {
+            $warehouse = Warehouse::query()
+                ->where('nms_id', (string) $warehouseNmsId)
+                ->first();
 
-                return $deviceName !== '' ? $gasPrefix.$deviceName : null;
-            })
-            ->filter()
-            ->unique()
-            ->values();
+            if (! $warehouse) {
+                return response()->json(['message' => 'Warehouse not found.'], 404);
+            }
+        }
+
+        $deviceTypeId = $request->get('deviceTypeId');
+        if ($deviceTypeId !== null && ! in_array((int) $deviceTypeId, [self::DEVICE_CO2, self::DEVICE_PH3], true)) {
+            return response()->json([
+                'message' => 'Invalid deviceTypeId. Use 30000 for CO2 or 30001 for PH3.',
+            ], 422);
+        }
+
+        $page = max(1, (int) $request->get('pageNumber', $request->get('page', 1)));
+        $pageSize = max(1, min((int) $request->get('pageSize', 20), 500));
+
+        $response = $alertService->fetchDevices([
+            'pageNumber' => $page,
+            'pageSize' => $pageSize,
+            'deviceTypeId' => $deviceTypeId !== null ? (int) $deviceTypeId : null,
+            'warehouseName' => $warehouse?->warehouse_name,
+            'warehouseCode' => $warehouse?->warehouse_code,
+            'accessibleWarehouseNames' => $this->accessibleWarehouseNames(),
+        ]);
 
         return response()->json([
-            'data' => $devices,
-            'deviceTypeId' => $response['deviceTypeId'],
-            'gasType' => $response['gasType'],
+            'data' => $response['data'],
+            'totalCount' => $response['totalCount'],
+            'pageNumber' => $response['pageNumber'],
+            'pageSize' => $response['pageSize'],
+            'totalPages' => $response['totalPages'],
+            'warehouseNmsId' => $warehouse?->nms_id ?? 'N/A',
+            'warehouseId' => $warehouse?->nms_id ?? 'N/A',
+            'deviceTypeId' => $deviceTypeId !== null ? (int) $deviceTypeId : 'N/A',
+            'gasType' => $deviceTypeId === null
+                ? 'ALL'
+                : ((int) $deviceTypeId === self::DEVICE_PH3 ? 'PH3' : 'CO2'),
         ]);
     }
 
@@ -232,12 +274,12 @@ class AlertController extends Controller
             'deviceTypeId' => $deviceTypeId,
             'pageNumber' => $page,
             'pageSize' => $pageSize,
-            'state' => $request->get('state'),
-            'location' => $request->get('location'),
-            'alertType' => $request->get('alertType'),
+            'state' => $request->query('state', $request->query('region')),
+            'location' => $request->query('location', $request->query('warehouse')),
+            'alertType' => $request->query('alertType', $request->query('alert_type')),
             'device' => $request->get('device'),
-            'fromDate' => $request->get('fromDate'),
-            'toDate' => $request->get('toDate'),
+            'fromDate' => $request->query('fromDate', $request->query('from_date')),
+            'toDate' => $request->query('toDate', $request->query('to_date')),
             'showNormal' => $request->boolean('showNormal') ? 1 : null,
             'allRecords' => $allRecords,
         ]);

@@ -34,7 +34,7 @@ class ApiLoginTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('role', 'wo')
-            ->assertJsonPath('user.id', $warehouse->uuid)
+            ->assertJsonPath('user.id', $warehouse->frs_id)
             ->assertJsonPath('user.email', 'warehouse@example.com')
             ->assertJsonStructure(['token', 'token_type', 'expires_in']);
         $this->assertSame('wo', $this->tokenPayload($response->json('token'))['role']);

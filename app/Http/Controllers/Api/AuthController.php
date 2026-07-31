@@ -38,7 +38,7 @@ class AuthController extends Controller
 
         if ($warehouse?->password && Hash::check($credentials['password'], $warehouse->password)) {
             return $this->loginResponse(
-                id: $warehouse->uuid ?? $warehouse->id,
+                id: $warehouse->frs_id ?? $warehouse->id,
                 name: $warehouse->manager_name ?: $warehouse->warehouse_name,
                 email: $warehouse->manager_email,
                 role: 'wo',
@@ -52,7 +52,7 @@ class AuthController extends Controller
 
         if ($region?->password && Hash::check($credentials['password'], $region->password)) {
             return $this->loginResponse(
-                id: $region->uuid ?? $region->id,
+                id: $region->frs_id ?? $region->id,
                 name: $region->manager_name ?: $region->region_name,
                 email: $region->manager_email,
                 role: 'ro',

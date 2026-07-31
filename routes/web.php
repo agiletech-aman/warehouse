@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\DeviceController;
+use App\Http\Controllers\FnsDetectionController;
 use App\Http\Controllers\ReadingController;
 use App\Http\Controllers\RegionController;
 use App\Http\Controllers\WarehouseController;
@@ -46,6 +47,8 @@ Route::get('/readings/data', [ReadingController::class, 'data'])->name('readings
 Route::resource('readings', ReadingController::class);
 Route::get('/alerts/data', [AlertController::class, 'data'])->name('alerts.data');
 Route::resource('alerts', AlertController::class);
+Route::get('/fns/detections/data', [FnsDetectionController::class, 'data'])->name('fns-detections.data');
+Route::get('/fns/detections', [FnsDetectionController::class, 'index'])->name('fns-detections.index');
 
 // Reports
 

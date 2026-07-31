@@ -13,15 +13,18 @@ class WarehouseController extends Controller
     public function locationsByState(string $state): JsonResponse
     {
         $locations = Warehouse::query()
-            ->whereNotNull('uuid')
-            ->whereHas('region', function ($query) use ($state) {
-                $query->whereRaw('LOWER(region_name) = ?', [strtolower(trim($state))]);
-            })
+            ->whereNotNull('frs_id')
+            ->where('region_id', $state)
             ->orderBy('warehouse_name')
-            ->get(['uuid', 'warehouse_name', 'region_uuid'])
-            ->filter(fn (Warehouse $warehouse) => ctype_digit((string) $warehouse->uuid))
-            ->map(fn (Warehouse $warehouse) => $this->formatLocationName($warehouse->warehouse_name))
-            ->unique()
+            ->get(['id', 'frs_id', 'nms_id', 'warehouse_name', 'region_frs_id'])
+            ->filter(fn (Warehouse $warehouse) => ctype_digit((string) $warehouse->frs_id))
+            ->map(fn (Warehouse $warehouse) => [
+                'base_id' => $warehouse->id,
+                'frs_id' => $warehouse->frs_id,
+                'nms_id' => $warehouse->nms_id,
+                'name' => $this->formatLocationName($warehouse->warehouse_name),
+            ])
+            ->unique('name')
             ->values();
 
         return response()->json($locations);
@@ -30,7 +33,7 @@ class WarehouseController extends Controller
     public function citiesByWarehouse(string $warehouseId): JsonResponse
     {
         $warehouse = Warehouse::query()
-            ->where('uuid', $warehouseId)
+            ->where('frs_id', $warehouseId)
             ->first(['warehouse_name', 'city']);
 
         if (! $warehouse) {
@@ -48,7 +51,7 @@ class WarehouseController extends Controller
 
     public function warehousesByRegion(Request $request, string $regionId): JsonResponse
     {
-        $request->merge(['region_uuid' => $regionId]);
+        $request->merge(['region_frs_id' => $regionId]);
 
         return $this->warehouses($request);
     }
@@ -64,24 +67,24 @@ class WarehouseController extends Controller
             ], 422);
         }
 
-        $regionUuid = $request->query('region_uuid');
+        $regionFrsId = $request->query('region_frs_id');
 
         $warehouses = Warehouse::query()
-            ->with('region:uuid,region_name')
+            ->with('region:frs_id,region_name')
             ->when($status, fn ($query) => $query->where('status', $status))
-            ->when($regionUuid, fn ($query) => $query->where('region_uuid', $regionUuid))
-            ->whereNotNull('uuid')
-            ->whereNotNull('region_uuid')
+            ->when($regionFrsId, fn ($query) => $query->where('region_frs_id', $regionFrsId))
+            ->whereNotNull('frs_id')
+            ->whereNotNull('region_frs_id')
             ->orderBy('warehouse_name')
-            ->get(['uuid', 'region_uuid', 'warehouse_name'])
-            ->filter(fn (Warehouse $warehouse) => ctype_digit((string) $warehouse->uuid)
-                && ctype_digit((string) $warehouse->region_uuid))
+            ->get(['frs_id', 'region_frs_id', 'warehouse_name'])
+            ->filter(fn (Warehouse $warehouse) => ctype_digit((string) $warehouse->frs_id)
+                && ctype_digit((string) $warehouse->region_frs_id))
             ->map(fn (Warehouse $warehouse) => [
-                'id' => (int) $warehouse->uuid,
-                'warehouse_name' => $warehouse->uuid === '50'
+                'id' => (int) $warehouse->frs_id,
+                'warehouse_name' => $warehouse->frs_id === '50'
                     ? 'RAIGARH-I'
                     : $warehouse->warehouse_name,
-                'region_id' => (int) $warehouse->region_uuid,
+                'region_id' => (int) $warehouse->region_frs_id,
                 'region_name' => $warehouse->region?->region_name,
             ])
             ->values();
@@ -110,19 +113,6 @@ class WarehouseController extends Controller
 
     private function formatLocationName(string $warehouseName): string
     {
-        $romanNumbers = [
-            'IV' => '4',
-            'III' => '3',
-            'II' => '2',
-            'I' => '1',
-        ];
-
-        $name = preg_replace_callback(
-            '/-(IV|III|II|I)(?=$|\()/i',
-            fn (array $matches) => '-'.$romanNumbers[strtoupper($matches[1])],
-            $warehouseName
-        );
-
-        return Str::title(strtolower((string) $name));
+        return $warehouseName;
     }
 }

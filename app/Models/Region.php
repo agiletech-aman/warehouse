@@ -12,7 +12,8 @@ class Region extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'uuid',
+        'frs_id',
+        'nms_id',
         'region_code',
         'region_name',
         'status',
@@ -36,12 +37,12 @@ class Region extends Model
     protected static function booted(): void
     {
         static::creating(function (Region $region) {
-            $region->uuid ??= (string) Str::uuid7();
+            $region->frs_id ??= (string) Str::uuid7();
         });
     }
 
     public function warehouses()
     {
-        return $this->hasMany(Warehouse::class, 'region_uuid', 'uuid');
+        return $this->hasMany(Warehouse::class, 'region_frs_id', 'frs_id');
     }
 }

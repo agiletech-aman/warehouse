@@ -22,12 +22,12 @@ class RegionController extends Controller
 
         $regions = Region::query()
             ->when($status, fn ($query) => $query->where('status', $status))
-            ->whereNotNull('uuid')
+            ->whereNotNull('frs_id')
             ->orderBy('region_name')
-            ->get(['uuid', 'region_name'])
-            ->filter(fn (Region $region) => ctype_digit((string) $region->uuid))
+            ->get(['frs_id', 'region_name'])
+            ->filter(fn (Region $region) => ctype_digit((string) $region->frs_id))
             ->map(fn (Region $region) => [
-                'id' => (int) $region->uuid,
+                'id' => (int) $region->frs_id,
                 'region_name' => $region->region_name,
             ])
             ->values();

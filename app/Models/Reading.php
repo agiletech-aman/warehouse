@@ -67,14 +67,37 @@ class Reading extends Model
         };
     }
 
-    public static function latestIdsPerSensor(bool $groupByDeviceType = false)
-    {
+    public static function latestIdsPerSensor(
+        bool $groupByDeviceType = false,
+        ?string $warehouseName = null,
+        ?string $warehouseCode = null
+    ) {
+        $applyWarehouseFilter = static function ($query, string $alias) use ($warehouseName, $warehouseCode): void {
+            if (($warehouseName === null || $warehouseName === '')
+                && ($warehouseCode === null || $warehouseCode === '')) {
+                return;
+            }
+
+            $query->where(function ($query) use ($alias, $warehouseName, $warehouseCode) {
+                if ($warehouseName !== null && $warehouseName !== '') {
+                    $query->where("{$alias}.warehouse", $warehouseName);
+                }
+
+                if ($warehouseCode !== null && $warehouseCode !== '') {
+                    $method = $warehouseName !== null && $warehouseName !== '' ? 'orWhere' : 'where';
+                    $query->{$method}("{$alias}.warehouse_code", $warehouseCode);
+                }
+            });
+        };
+
         $latestTimestamps = DB::table('readings as latest_source')
             ->select('latest_source.sensor_device_id')
             ->selectRaw('MAX(latest_source.recorded_at) as latest_recorded_at')
             ->whereNull('latest_source.deleted_at')
             ->whereNotNull('latest_source.sensor_device_id')
             ->groupBy('latest_source.sensor_device_id');
+
+        $applyWarehouseFilter($latestTimestamps, 'latest_source');
 
         if ($groupByDeviceType) {
             $latestTimestamps
@@ -101,6 +124,8 @@ class Reading extends Model
             ->whereNull('candidate.deleted_at')
             ->whereNotNull('candidate.sensor_device_id')
             ->groupBy('candidate.sensor_device_id');
+
+        $applyWarehouseFilter($query, 'candidate');
 
         if ($groupByDeviceType) {
             $query->groupBy('candidate.device_type');
