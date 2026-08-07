@@ -5,9 +5,64 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class WarehouseController extends Controller
 {
+     public function login(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $warehouse = Warehouse::with('region')
+            ->whereRaw('LOWER(manager_email) = ?', [
+                Str::lower($validated['email'])
+            ])
+            ->first();
+
+        if (!$warehouse || !Hash::check($validated['password'], $warehouse->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid email or password.',
+            ], 401);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Login successful.',
+            'warehouse' => [
+                'id' => $warehouse->id,
+                'frs_id' => $warehouse->frs_id,
+                'nms_id' => $warehouse->nms_id,
+
+                'region_id' => $warehouse->region_id,
+                'region_frs_id' => $warehouse->region_frs_id,
+                'region_nms_id' => $warehouse->region_nms_id,
+
+                'warehouse_code' => $warehouse->warehouse_code,
+                'warehouse_name' => $warehouse->warehouse_name,
+
+                'manager_name' => $warehouse->manager_name,
+                'manager_email' => $warehouse->manager_email,
+                'manager_phone' => $warehouse->manager_phone,
+
+                'address' => $warehouse->address,   
+                'status' => $warehouse->status,
+
+                'region' => $warehouse->region ? [
+                    'id' => $warehouse->region->id,
+                    'frs_id' => $warehouse->region->frs_id,
+                    'nms_id' => $warehouse->region->nms_id,
+                    'region_name' => $warehouse->region->region_name,
+                    'region_code' => $warehouse->region->region_code,
+                ] : null,
+            ],
+        ]);
+    }
+    
     public function index(Request $request)
     {
         $perPage = (int) ($request->query('per_page', 10));

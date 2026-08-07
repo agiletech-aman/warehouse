@@ -13,7 +13,7 @@ use App\Http\Controllers\Api\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login']);
-
+Route::post('/warehouse/login', [WarehouseController::class, 'login']);
 Route::post('/readings', [ReadingController::class, 'store']);
 Route::get('/fns/detections', [FnsDetectionController::class, 'index']);
 Route::post('/fns/detections', [FnsDetectionController::class, 'store']);
