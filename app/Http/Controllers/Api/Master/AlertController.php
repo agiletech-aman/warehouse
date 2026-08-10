@@ -22,7 +22,7 @@ class AlertController extends Controller
 
     public function alertsApi(Request $request, MasterAlertService $alertService): JsonResponse
     {
-        $response = $this->getAlerts($request, $alertService, null, true);
+        $response = $this->getAlerts($request, $alertService);
 
         return response()->json([
             'totalCount' => $response['totalCount'],
@@ -266,7 +266,7 @@ class AlertController extends Controller
         bool $allDeviceTypes = false,
         bool $allRecords = false
     ): array {
-        $deviceTypeId = $allDeviceTypes ? null : $this->deviceTypeId($request);
+        $deviceTypeId = $allDeviceTypes ? null : $this->optionalDeviceTypeId($request);
         $page = max(1, (int) $request->get('pageNumber', $request->get('page', 1)));
         $pageSize = $customPageSize ?? max(1, min((int) $request->get('pageSize', 20), 500));
 
@@ -282,15 +282,8 @@ class AlertController extends Controller
             'toDate' => $request->query('toDate', $request->query('to_date')),
             'showNormal' => $request->boolean('showNormal') ? 1 : null,
             'allRecords' => $allRecords,
+            'accessibleWarehouseNames' => $this->accessibleWarehouseNames(),
         ]);
-
-        $warehouseNames = $this->accessibleWarehouseNames();
-        if ($warehouseNames !== null) {
-            $response['data'] = collect($response['data'] ?? [])
-                ->filter(fn (array $alert) => in_array($alert['locationName'] ?? null, $warehouseNames, true))
-                ->values()
-                ->all();
-        }
 
         $response['deviceTypeId'] = $deviceTypeId;
         $response['gasType'] = $deviceTypeId === null
@@ -327,6 +320,13 @@ class AlertController extends Controller
         return in_array($deviceTypeId, [self::DEVICE_CO2, self::DEVICE_PH3], true)
             ? $deviceTypeId
             : self::DEVICE_CO2;
+    }
+
+    private function optionalDeviceTypeId(Request $request): ?int
+    {
+        return $request->has('deviceTypeId')
+            ? $this->deviceTypeId($request)
+            : null;
     }
 
     private function accessibleWarehouseNames(): ?array

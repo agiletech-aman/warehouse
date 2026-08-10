@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Reading;
+use App\Models\DeviceLatestStatus;
 use App\Models\Region;
 use App\Models\Warehouse;
 use Carbon\Carbon;
@@ -24,13 +25,10 @@ class MasterAlertService
         $warehouseName = $filters['warehouseName'] ?? null;
         $warehouseCode = $filters['warehouseCode'] ?? null;
 
-        $query = Reading::query()
-            ->whereIn('id', Reading::latestIdsPerSensor(false, $warehouseName, $warehouseCode))
-            ->whereRaw('LOWER(device_type) IN (?, ?)', ['co2', 'ph3']);
+        $query = DeviceLatestStatus::query()->monitoringGases();
 
         if (isset($filters['deviceTypeId'])) {
-            $deviceType = (int) $filters['deviceTypeId'] === self::DEVICE_PH3 ? 'ph3' : 'co2';
-            $query->whereRaw('LOWER(device_type) = ?', [$deviceType]);
+            $query->deviceTypeId((int) $filters['deviceTypeId']);
         }
 
         if (! empty($filters['warehouseName']) || ! empty($filters['warehouseCode'])) {
@@ -57,11 +55,10 @@ class MasterAlertService
 
         $readings = $query
             ->latest('recorded_at')
-            ->latest('id')
+            ->orderBy('sensor_device_id')
             ->offset(($page - 1) * $pageSize)
             ->limit($pageSize)
             ->get([
-                'id',
                 'sensor_device_id',
                 'device_name',
                 'device_type',
@@ -79,13 +76,15 @@ class MasterAlertService
                 'recorded_at',
             ]);
 
-        $data = $readings->map(function (Reading $reading) {
+        $data = $readings->map(function (DeviceLatestStatus $reading) {
             $location = collect([$reading->godown, $reading->compartment])
                 ->filter(fn ($part) => $part !== null && $part !== '')
                 ->implode(' / ');
 
             return [
-                'id' => $reading->id,
+                // Current-status rows are keyed by sensor id, not a historical
+                // reading id. Keep the legacy response key with that stable id.
+                'id' => $reading->sensor_device_id,
                 'code' => $reading->sensor_device_id ?? 'N/A',
                 'name' => $reading->device_name ?? 'N/A',
                 'region' => $reading->region ?? 'N/A',
@@ -170,6 +169,13 @@ class MasterAlertService
                 '<=',
                 $this->filterDate((string) $filters['toDate'], true)
             );
+        }
+
+        if (is_array($filters['accessibleWarehouseNames'] ?? null)) {
+            $warehouseNames = array_values(array_filter($filters['accessibleWarehouseNames']));
+            $warehouseNames === []
+                ? $query->whereRaw('1 = 0')
+                : $query->whereIn('warehouse', $warehouseNames);
         }
 
         $total = (clone $query)->count();

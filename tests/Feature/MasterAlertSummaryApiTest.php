@@ -28,7 +28,7 @@ class MasterAlertSummaryApiTest extends TestCase
             ->assertJsonPath('overall.totalOfflineCO2', 1)
             ->assertJsonPath('overall.totalOnlinePH3', 1)
             ->assertJsonPath('overall.totalOfflinePH3', 0)
-            ->assertJsonPath('overall.totalNormalCO2', 2)
+            ->assertJsonPath('overall.totalNormalCO2', 1)
             ->assertJsonPath('overall.totalCriticalCO2', 1)
             ->assertJsonPath('overall.totalSeverePH3', 1)
             ->assertJsonPath('locationWise.TEST WAREHOUSE-TEST STATE.totalSensorsCO2', 2)

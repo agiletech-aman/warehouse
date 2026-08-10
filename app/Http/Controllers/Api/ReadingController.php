@@ -4,11 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Alert;
 use App\Models\Device;
+use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
+use App\Models\Region;
+use App\Models\Warehouse;
+use App\Services\DeviceLatestStatusService;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use App\Models\EmailRouting;
 use App\Models\CcEmail;
 
@@ -51,20 +56,29 @@ class ReadingController extends Controller
         $warehouseCode = $request->query('warehouse_code');
         $warehouseName = $request->query('warehouse_name');
 
-        $startDate = $request->query('start_date'); // YYYY-MM-DD
-        $endDate = $request->query('end_date');     // YYYY-MM-DD
+        $startDate = $request->query('start_date')
+            ?? $request->query('from_date')
+            ?? $request->query('fromDate')
+            ?? $request->query('from'); // YYYY-MM-DD
+        $endDate = $request->query('end_date')
+            ?? $request->query('to_date')
+            ?? $request->query('toDate')
+            ?? $request->query('to'); // YYYY-MM-DD
 
-        // basic recorded_at range filter
-        $base = Reading::query();
+        // A range asks for history. Without one this endpoint is a live
+        // current-device summary and must not derive latest rows from history.
+        $useHistoricalReadings = $startDate !== null || $endDate !== null;
+
+        $base = $useHistoricalReadings ? Reading::query() : DeviceLatestStatus::query();
 
         if ($level) {
             $base->where('level', $level);
         }
 
-        if ($startDate) {
+        if ($useHistoricalReadings && $startDate) {
             $base->where('recorded_at', '>=', $startDate . ' 00:00:00');
         }
-        if ($endDate) {
+        if ($useHistoricalReadings && $endDate) {
             $base->where('recorded_at', '<=', $endDate . ' 23:59:59');
         }
 
@@ -76,7 +90,7 @@ class ReadingController extends Controller
             $base->where('warehouse_code', $warehouseCode);
         }
 
-        if ($normalizedDeviceStatus || $regionId || $regionName || $warehouseId || $warehouseName) {
+        if ($useHistoricalReadings && ($normalizedDeviceStatus || $regionId || $regionName || $warehouseId || $warehouseName)) {
             $base->whereHas('device', function ($q) use ($normalizedDeviceStatus, $regionId, $regionName, $warehouseId, $warehouseName) {
                 if ($normalizedDeviceStatus) {
                     $q->where('status', $normalizedDeviceStatus);
@@ -105,6 +119,40 @@ class ReadingController extends Controller
             });
         }
 
+        if (! $useHistoricalReadings) {
+            if ($normalizedDeviceStatus) {
+                $base->where('status', $normalizedDeviceStatus);
+            }
+
+            if ($warehouseId) {
+                $warehouse = Warehouse::find($warehouseId, ['warehouse_code', 'warehouse_name']);
+                $warehouse
+                    ? $base->where(function ($query) use ($warehouse) {
+                        $query->where('warehouse_code', $warehouse->warehouse_code)
+                            ->orWhere('warehouse', $warehouse->warehouse_name);
+                    })
+                    : $base->whereRaw('1 = 0');
+            }
+
+            if ($warehouseName) {
+                $base->where('warehouse', $warehouseName);
+            }
+
+            if ($regionId) {
+                $region = Region::find($regionId, ['region_code', 'region_name']);
+                $region
+                    ? $base->where(function ($query) use ($region) {
+                        $query->where('region_code', $region->region_code)
+                            ->orWhere('region', $region->region_name);
+                    })
+                    : $base->whereRaw('1 = 0');
+            }
+
+            if ($regionName) {
+                $base->where('region', $regionName);
+            }
+        }
+
         // If only regionId/regionName provided but device_id is null for some readings,
         // they won't match the whereHas above. This is accepted as ingestion stores device_id when resolvable.
 
@@ -128,10 +176,7 @@ class ReadingController extends Controller
         $dataQuery = (clone $base);
         $dataQuery->latest('recorded_at');
 
-        $dataQuery->select([
-            'id',
-            // Return sensor identifier as device_id if FK device_id is null
-            // (device_id is nullable in your schema).
+        $columns = [
             'sensor_device_id',
             'device_name',
             'device_type',
@@ -148,7 +193,15 @@ class ReadingController extends Controller
             'level',
             'status',
             'recorded_at',
-        ]);
+        ];
+
+        if ($useHistoricalReadings) {
+            $dataQuery->select(['id', ...$columns]);
+        } else {
+            // The projection intentionally has no historical row id. Expose a
+            // stable id key so this endpoint's JSON structure stays unchanged.
+            $dataQuery->selectRaw('sensor_device_id as id')->addSelect($columns);
+        }
 
 
         $offset = ($page - 1) * $perPage;
@@ -181,9 +234,10 @@ class ReadingController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request, DeviceLatestStatusService $latestStatus)
     {
-        $rows = [];
+        $rows = DB::transaction(function () use ($request, $latestStatus) {
+            $rows = [];
 
         foreach ($request->readings as $index => $reading) {
             $readingValue = $reading['value'] ?? null;
@@ -247,10 +301,17 @@ class ReadingController extends Controller
                 'recorded_at' => $reading['recorded_at'] ?? now(),
             ];
 
-            $createdReading = Reading::create($row);
+            // The model observer covers regular Eloquent writes elsewhere.
+            // Do this explicitly here so history and current state share one
+            // transaction and the status write happens exactly once per row.
+            $createdReading = Reading::withoutEvents(fn () => Reading::create($row));
+            $latestStatus->upsertFromReading($createdReading);
             $row['reading_id'] = $createdReading->id;
             $rows[] = $row;
         }
+
+            return $rows;
+        });
 
         $totalAlertsCreated = 0;
         $totalAlertsClosed = 0;

@@ -84,7 +84,7 @@ class AlertController extends Controller
     public function create()
     {
         $devices = Device::latest()->get();
-        $readings = Reading::latest()->get();
+        $readings = Reading::latest()->limit(500)->get();
 
         return view('alerts.create', compact('devices', 'readings'));
     }
@@ -113,7 +113,7 @@ class AlertController extends Controller
     public function edit(Alert $alert)
     {
         $devices = Device::latest()->get();
-        $readings = Reading::latest()->get();
+        $readings = Reading::latest()->limit(500)->get();
 
         return view('alerts.edit', compact('alert', 'devices', 'readings'));
     }

@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\Reading;
+use App\Models\DeviceLatestStatus;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -21,7 +22,7 @@ class DeviceDetailedSummaryExport implements FromCollection, WithHeadings, Shoul
 
     public function collection(): Collection
     {
-        $query = Reading::query()->whereIn('id', Reading::latestIdsPerSensor());
+        $query = DeviceLatestStatus::query();
 
         $region = trim((string) ($this->filters['region_code'] ?? ''));
         $warehouse = trim((string) ($this->filters['warehouse_code'] ?? ''));
@@ -52,14 +53,14 @@ class DeviceDetailedSummaryExport implements FromCollection, WithHeadings, Shoul
                 'warehouse',
                 'warehouse_code',
             ])
-            ->groupBy(function (Reading $reading) {
+            ->groupBy(function (DeviceLatestStatus $reading) {
                 $code = trim((string) $reading->warehouse_code);
                 $name = trim((string) $reading->warehouse);
 
                 return $code !== '' ? 'code:'.$code : 'name:'.($name !== '' ? $name : 'unassigned');
             })
             ->map(function (Collection $readings) {
-                /** @var Reading $warehouse */
+                /** @var DeviceLatestStatus $warehouse */
                 $warehouse = $readings->first();
                 $name = trim((string) $warehouse->warehouse);
                 $code = trim((string) $warehouse->warehouse_code);
@@ -67,10 +68,10 @@ class DeviceDetailedSummaryExport implements FromCollection, WithHeadings, Shoul
                 $regionCode = trim((string) $warehouse->region_code);
                 $overall = $this->statusCounts($readings);
                 $co2 = $this->statusCounts($readings->filter(
-                    fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'CO2'
+                    fn (DeviceLatestStatus $reading) => $this->normalizedDeviceType($reading->device_type) === 'CO2'
                 ));
                 $ph3 = $this->statusCounts($readings->filter(
-                    fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'PH3'
+                    fn (DeviceLatestStatus $reading) => $this->normalizedDeviceType($reading->device_type) === 'PH3'
                 ));
 
                 return [
@@ -145,10 +146,10 @@ class DeviceDetailedSummaryExport implements FromCollection, WithHeadings, Shoul
         return [
             'total' => $readings->count(),
             'online' => $readings->filter(
-                fn (Reading $reading) => strtolower(trim((string) $reading->status)) === 'online'
+                fn (DeviceLatestStatus $reading) => strtolower(trim((string) $reading->status)) === 'online'
             )->count(),
             'offline' => $readings->filter(
-                fn (Reading $reading) => strtolower(trim((string) $reading->status)) === 'offline'
+                fn (DeviceLatestStatus $reading) => strtolower(trim((string) $reading->status)) === 'offline'
             )->count(),
         ];
     }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
@@ -10,11 +11,6 @@ use Illuminate\Http\Request;
 
 class DeviceController extends Controller
 {
-    private function latestReadingIds()
-    {
-        return Reading::latestIdsPerSensor();
-    }
-
     public function index(Request $request)
     {
         $perPage = (int) ($request->query('per_page', 10));
@@ -47,8 +43,7 @@ class DeviceController extends Controller
         $deviceCode = $request->query('device_code');
         $deviceName = $request->query('device_name');
 
-        $query = Reading::query()
-            ->whereIn('id', $this->latestReadingIds());
+        $query = DeviceLatestStatus::query();
 
         if ($status) {
             $statusMap = [
@@ -109,10 +104,23 @@ class DeviceController extends Controller
             $query->where('device_name', $deviceName);
         }
 
-        $query->latest('id');
+        $search = trim((string) $request->query('search', ''));
+        if ($search !== '') {
+            $like = '%'.$search.'%';
+            $query->where(function ($query) use ($like) {
+                $query->where('sensor_device_id', 'like', $like)
+                    ->orWhere('device_name', 'like', $like)
+                    ->orWhere('device_type', 'like', $like)
+                    ->orWhere('region', 'like', $like)
+                    ->orWhere('region_code', 'like', $like)
+                    ->orWhere('warehouse', 'like', $like)
+                    ->orWhere('warehouse_code', 'like', $like);
+            });
+        }
+
+        $query->latest('recorded_at')->orderBy('sensor_device_id');
 
         $query->select([
-            'id',
             'sensor_device_id',
             'device_name',
             'device_type',
@@ -133,10 +141,12 @@ class DeviceController extends Controller
         ]);
 
         $devices = $query->paginate($perPage);
-        $devices->getCollection()->transform(function (Reading $reading) use ($includeWarehouse, $includeRegion) {
+        $devices->getCollection()->transform(function (DeviceLatestStatus $reading) use ($includeWarehouse, $includeRegion) {
             $row = [
-                'id' => $reading->id,
-                'reading_id' => $reading->id,
+                // The projection has no historical row id. Retain both keys
+                // from the legacy response with the stable sensor identifier.
+                'id' => $reading->sensor_device_id,
+                'reading_id' => $reading->sensor_device_id,
                 'warehouse_id' => null,
                 'device_code' => $reading->sensor_device_id,
                 'device_name' => $reading->device_name,
@@ -176,7 +186,7 @@ class DeviceController extends Controller
             return $row;
         });
 
-        $latestDevices = Reading::query()->whereIn('id', $this->latestReadingIds());
+        $latestDevices = DeviceLatestStatus::query();
         $activeCount = (clone $latestDevices)->where('status', 'online')->count();
         $inactiveCount = (clone $latestDevices)->where('status', 'offline')->count();
 

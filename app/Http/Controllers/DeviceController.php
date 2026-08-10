@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exports\DevicesExport;
 use App\Exports\DeviceDetailedSummaryExport;
 use App\Models\Device;
+use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
@@ -12,11 +13,6 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class DeviceController extends Controller
 {
-    private function latestReadingIds()
-    {
-        return Reading::latestIdsPerSensor();
-    }
-
     private function applyReadingDeviceFilters($query, Request $request, bool $includeStatus = true)
     {
         $selectedRegion = trim((string) $request->query('region_code', ''));
@@ -58,72 +54,81 @@ class DeviceController extends Controller
             $selectedStatus = '';
         }
 
-        $regions = Reading::whereIn('id', $this->latestReadingIds())
+        $regions = DeviceLatestStatus::query()
+            ->where(function ($query) {
+                $query->whereNotNull('region_code')->orWhereNotNull('region');
+            })
             ->select('region_code', 'region')
             ->distinct()
             ->orderBy('region')
-            ->get()
-            ->filter(fn ($region) => $region->region_code || $region->region)
-            ->unique(fn ($region) => $region->region_code ?: $region->region)
-            ->values();
+            ->get();
 
-        $warehouses = Reading::whereIn('id', $this->latestReadingIds())
+        $warehouses = DeviceLatestStatus::query()
+            ->where(function ($query) {
+                $query->whereNotNull('warehouse_code')->orWhereNotNull('warehouse');
+            })
             ->select('warehouse_code', 'warehouse')
             ->distinct()
             ->orderBy('warehouse')
-            ->get()
-            ->filter(fn ($warehouse) => $warehouse->warehouse_code || $warehouse->warehouse)
-            ->unique(fn ($warehouse) => $warehouse->warehouse_code ?: $warehouse->warehouse)
-            ->values();
+            ->get();
 
-        $deviceCountsQuery = Reading::whereIn('id', $this->latestReadingIds());
+        $deviceCountsQuery = DeviceLatestStatus::query();
         $this->applyReadingDeviceFilters($deviceCountsQuery, $request);
 
-        $summaryReadings = $deviceCountsQuery->get([
-            'device_type',
-            'status',
-            'region',
-            'region_code',
-            'warehouse',
-            'warehouse_code',
-        ]);
+        $summaryCounts = (clone $deviceCountsQuery)
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'online' THEN 1 ELSE 0 END) as online")
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'offline' THEN 1 ELSE 0 END) as offline")
+            ->first();
 
-        $deviceCounts = $this->statusCounts($summaryReadings);
+        $deviceCounts = $this->countsFromAggregate($summaryCounts);
 
         // A warehouse is active when it has received at least one reading in the last 24 hours.
         // Region and warehouse filters apply, while the device status filter is intentionally ignored.
-        $activeWarehouseReadings = Reading::query()
+        $activeWarehouseReadings = DeviceLatestStatus::query()
             ->where('recorded_at', '>=', now()->subDay());
         $this->applyReadingDeviceFilters($activeWarehouseReadings, $request, false);
 
         $activeWarehouseCount = $activeWarehouseReadings
-            ->get(['warehouse', 'warehouse_code'])
-            ->filter(fn (Reading $reading) => $reading->warehouse_code || $reading->warehouse)
-            ->unique(fn (Reading $reading) => $reading->warehouse_code ?: $reading->warehouse)
+            ->where(function ($query) {
+                $query->whereNotNull('warehouse_code')->orWhereNotNull('warehouse');
+            })
+            ->select(['warehouse', 'warehouse_code'])
+            ->groupBy('warehouse', 'warehouse_code')
+            ->get()
             ->count();
+
+        $gas = "LOWER(REPLACE(REPLACE(device_type, '₂', '2'), '₃', '3'))";
+        $typeCounts = (clone $deviceCountsQuery)
+            ->selectRaw("{$gas} as gas")
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'online' THEN 1 ELSE 0 END) as online")
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'offline' THEN 1 ELSE 0 END) as offline")
+            ->groupByRaw($gas)
+            ->get()
+            ->keyBy(fn ($row) => strtoupper((string) $row->gas));
 
         $deviceTypeCounts = collect(['CO2', 'PH3'])
             ->mapWithKeys(fn (string $type) => [
-                $type => $this->statusCounts(
-                    $summaryReadings->filter(
-                        fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === $type
-                    )
-                ),
+                $type => $this->countsFromAggregate($typeCounts->get($type)),
             ])
             ->all();
 
-        $warehouseDeviceCounts = $summaryReadings
-            ->groupBy(function (Reading $reading) {
-                $warehouseCode = trim((string) $reading->warehouse_code);
-                $warehouseName = trim((string) $reading->warehouse);
-
-                return $warehouseCode !== ''
-                    ? 'code:' . $warehouseCode
-                    : 'name:' . ($warehouseName !== '' ? $warehouseName : 'unassigned');
-            })
-            ->map(function ($warehouseReadings) {
-                /** @var Reading $warehouse */
-                $warehouse = $warehouseReadings->first();
+        $warehouseDeviceCounts = (clone $deviceCountsQuery)
+            ->select(['warehouse', 'warehouse_code', 'region', 'region_code'])
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'online' THEN 1 ELSE 0 END) as online")
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'offline' THEN 1 ELSE 0 END) as offline")
+            ->selectRaw("SUM(CASE WHEN {$gas} = 'co2' THEN 1 ELSE 0 END) as co2_total")
+            ->selectRaw("SUM(CASE WHEN {$gas} = 'co2' AND LOWER(COALESCE(status, '')) = 'online' THEN 1 ELSE 0 END) as co2_online")
+            ->selectRaw("SUM(CASE WHEN {$gas} = 'co2' AND LOWER(COALESCE(status, '')) = 'offline' THEN 1 ELSE 0 END) as co2_offline")
+            ->selectRaw("SUM(CASE WHEN {$gas} = 'ph3' THEN 1 ELSE 0 END) as ph3_total")
+            ->selectRaw("SUM(CASE WHEN {$gas} = 'ph3' AND LOWER(COALESCE(status, '')) = 'online' THEN 1 ELSE 0 END) as ph3_online")
+            ->selectRaw("SUM(CASE WHEN {$gas} = 'ph3' AND LOWER(COALESCE(status, '')) = 'offline' THEN 1 ELSE 0 END) as ph3_offline")
+            ->groupBy('warehouse', 'warehouse_code', 'region', 'region_code')
+            ->orderBy('warehouse')
+            ->get()
+            ->map(function ($warehouse) {
                 $warehouseName = trim((string) $warehouse->warehouse);
                 $warehouseCode = trim((string) $warehouse->warehouse_code);
                 $regionName = trim((string) $warehouse->region);
@@ -134,16 +139,19 @@ class DeviceController extends Controller
                     'code' => $warehouseCode,
                     'region_name' => $regionName !== '' ? $regionName : ($regionCode !== '' ? $regionCode : '-'),
                     'region_code' => $regionCode,
-                    'overall' => $this->statusCounts($warehouseReadings),
-                    'CO2' => $this->statusCounts($warehouseReadings->filter(
-                        fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'CO2'
-                    )),
-                    'PH3' => $this->statusCounts($warehouseReadings->filter(
-                        fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'PH3'
-                    )),
+                    'overall' => $this->countsFromAggregate($warehouse),
+                    'CO2' => [
+                        'total' => (int) $warehouse->co2_total,
+                        'online' => (int) $warehouse->co2_online,
+                        'offline' => (int) $warehouse->co2_offline,
+                    ],
+                    'PH3' => [
+                        'total' => (int) $warehouse->ph3_total,
+                        'online' => (int) $warehouse->ph3_online,
+                        'offline' => (int) $warehouse->ph3_offline,
+                    ],
                 ];
             })
-            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
         return view('devices.index', compact(
@@ -169,10 +177,10 @@ class DeviceController extends Controller
             $length = 10;
         }
 
-        $allDevices = Reading::whereIn('id', $this->latestReadingIds());
+        $allDevices = DeviceLatestStatus::query();
         $recordsTotal = (clone $allDevices)->count();
 
-        $query = Reading::whereIn('id', $this->latestReadingIds());
+        $query = DeviceLatestStatus::query();
         $this->applyReadingDeviceFilters($query, $request);
         $this->applyDataTableSearch($query, $request);
 
@@ -180,11 +188,10 @@ class DeviceController extends Controller
 
         $devices = $query
             ->latest('recorded_at')
-            ->latest('id')
+            ->orderBy('sensor_device_id')
             ->offset($start)
             ->limit($length)
             ->get([
-                'id',
                 'sensor_device_id',
                 'device_name',
                 'device_type',
@@ -200,7 +207,7 @@ class DeviceController extends Controller
                 'status',
                 'recorded_at',
             ])
-            ->map(function (Reading $reading) {
+            ->map(function (DeviceLatestStatus $reading) {
                 return [
                     'code' => $reading->sensor_device_id ?: '-',
                     'name' => $reading->device_name ?: '-',
@@ -215,7 +222,7 @@ class DeviceController extends Controller
                     'recorded_at' => $reading->recorded_at?->format('d M Y H:i:s') ?: '-',
                     'level' => Reading::normalizeLevel($reading->reading_value, $reading->level),
                     'status' => $reading->status ?: 'offline',
-                    'delete_url' => route('devices.reading-destroy', $reading),
+                    'delete_url' => route('devices.reading-destroy', ['reading' => $reading->sensor_device_id]),
                     'delete_label' => $reading->device_name ?: ($reading->sensor_device_id ?: 'this device'),
                 ];
             });
@@ -344,15 +351,21 @@ class DeviceController extends Controller
         return redirect()->route('devices.index')->with('success', 'Device deleted successfully.');
     }
 
-    public function destroyReadingDevice(Reading $reading)
+    public function destroyReadingDevice(string $reading)
     {
-        $deletedReadings = Reading::where(function ($query) use ($reading) {
-            if ($reading->sensor_device_id) {
-                $query->where('sensor_device_id', $reading->sensor_device_id);
-            } else {
-                $query->where('id', $reading->id);
-            }
-        })->delete();
+        $historicalReading = Reading::query()
+            ->where('sensor_device_id', $reading)
+            ->orWhere('id', $reading)
+            ->firstOrFail();
+
+        $sensorDeviceId = $historicalReading->sensor_device_id;
+        $deletedReadings = Reading::query()
+            ->where('sensor_device_id', $sensorDeviceId ?: $historicalReading->id)
+            ->delete();
+
+        if ($sensorDeviceId) {
+            DeviceLatestStatus::query()->whereKey($sensorDeviceId)->delete();
+        }
 
         return redirect()->back()->with('success', $deletedReadings . ' reading(s) deleted successfully.');
     }
@@ -392,21 +405,12 @@ class DeviceController extends Controller
         return $parts ? implode(' / ', $parts) : '-';
     }
 
-    private function statusCounts($readings): array
+    private function countsFromAggregate($aggregate): array
     {
         return [
-            'total' => $readings->count(),
-            'online' => $readings->filter(
-                fn (Reading $reading) => strtolower(trim((string) $reading->status)) === 'online'
-            )->count(),
-            'offline' => $readings->filter(
-                fn (Reading $reading) => strtolower(trim((string) $reading->status)) === 'offline'
-            )->count(),
+            'total' => (int) ($aggregate->total ?? 0),
+            'online' => (int) ($aggregate->online ?? 0),
+            'offline' => (int) ($aggregate->offline ?? 0),
         ];
-    }
-
-    private function normalizedDeviceType(?string $deviceType): string
-    {
-        return strtoupper(str_replace([' ', '-', '_', '₂', '₃'], ['', '', '', '2', '3'], trim((string) $deviceType)));
     }
 }

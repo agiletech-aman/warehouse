@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Admin;
+use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
@@ -58,11 +59,8 @@ class AdminController extends Controller
 
         $totalRegions = Region::count();
 
-        // Count each sensor once, using the same latest reading shown on the Devices page.
-        $latestDeviceReadingIds = Reading::latestIdsPerSensor();
-
-        $deviceStatusCounts = Reading::query()
-            ->whereIn('id', clone $latestDeviceReadingIds)
+        // Current status is maintained independently of historical readings.
+        $deviceStatusCounts = DeviceLatestStatus::query()
             ->selectRaw("SUM(CASE WHEN LOWER(status) = 'online' THEN 1 ELSE 0 END) AS online_count")
             ->selectRaw("SUM(CASE WHEN LOWER(status) = 'offline' THEN 1 ELSE 0 END) AS offline_count")
             ->first();
@@ -81,7 +79,7 @@ class AdminController extends Controller
 
         $last24hAlertsCount = \App\Models\Alert::where('created_at', '>=', now()->subDay())->count();
 
-        $latestReadings = \App\Models\Reading::with('device')
+        $latestReadings = DeviceLatestStatus::query()
             ->latest('recorded_at')
             ->take(5)
             ->get();

@@ -83,18 +83,16 @@ class Warehouse extends Model
         $activeSince = now()->subDay();
 
         return $query->where(function (Builder $query) use ($activeSince) {
-            $query->whereExists(function ($readingQuery) use ($activeSince) {
-                $readingQuery->selectRaw('1')
-                    ->from('readings')
-                    ->whereNull('readings.deleted_at')
-                    ->where('readings.recorded_at', '>=', $activeSince)
-                    ->whereColumn('readings.warehouse_code', 'warehouses.warehouse_code');
-            })->orWhereExists(function ($readingQuery) use ($activeSince) {
-                $readingQuery->selectRaw('1')
-                    ->from('readings')
-                    ->whereNull('readings.deleted_at')
-                    ->where('readings.recorded_at', '>=', $activeSince)
-                    ->whereColumn('readings.warehouse', 'warehouses.warehouse_name');
+            $query->whereExists(function ($statusQuery) use ($activeSince) {
+                $statusQuery->selectRaw('1')
+                    ->from('device_latest_status')
+                    ->where('device_latest_status.recorded_at', '>=', $activeSince)
+                    ->whereColumn('device_latest_status.warehouse_code', 'warehouses.warehouse_code');
+            })->orWhereExists(function ($statusQuery) use ($activeSince) {
+                $statusQuery->selectRaw('1')
+                    ->from('device_latest_status')
+                    ->where('device_latest_status.recorded_at', '>=', $activeSince)
+                    ->whereColumn('device_latest_status.warehouse', 'warehouses.warehouse_name');
             });
         });
     }

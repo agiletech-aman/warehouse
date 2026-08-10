@@ -8,7 +8,7 @@ use App\Http\Controllers\FnsDetectionController;
 use App\Http\Controllers\ReadingController;
 use App\Http\Controllers\RegionController;
 use App\Http\Controllers\WarehouseController;
-use App\Models\Reading;
+use App\Models\DeviceLatestStatus;
 use App\Models\Region;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\GlobalSearchController;
@@ -69,13 +69,12 @@ Route::get('/admin/global-search', [GlobalSearchController::class, 'index'])
 
 Route::get('/hierarchy', function () {
 
-    $latestDeviceReadings = Reading::query()
-        ->whereNotNull('sensor_device_id')
+    // One projection row exists per sensor, so hierarchy never scans or
+    // de-duplicates the historical readings table.
+    $latestDeviceReadings = DeviceLatestStatus::query()
         ->orderByDesc('recorded_at')
-        ->orderByDesc('id')
-        ->get()
-        ->unique('sensor_device_id')
-        ->values();
+        ->orderBy('sensor_device_id')
+        ->get();
 
     $regionKey = fn ($code, $name) => strtolower(trim($code ?: $name ?: 'unknown'));
     $warehouseKey = fn ($code, $name) => strtolower(trim($code ?: $name ?: 'unknown'));

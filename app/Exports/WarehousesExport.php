@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\Reading;
+use App\Models\DeviceLatestStatus;
 use App\Models\Warehouse;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -109,14 +110,13 @@ class WarehousesExport implements FromQuery, WithHeadings, WithMapping, ShouldAu
 
     private function deviceTypeCounts(Warehouse $warehouse): array
     {
-        $this->latestDeviceReadings ??= Reading::query()
-            ->whereIn('id', Reading::latestIdsPerSensor())
-            ->get(['id', 'warehouse', 'warehouse_code', 'device_type']);
+        $this->latestDeviceReadings ??= DeviceLatestStatus::query()
+            ->get(['sensor_device_id', 'warehouse', 'warehouse_code', 'device_type']);
 
         $warehouseCode = strtolower(trim((string) $warehouse->warehouse_code));
         $warehouseName = strtolower(trim((string) $warehouse->warehouse_name));
 
-        $warehouseReadings = $this->latestDeviceReadings->filter(function (Reading $reading) use ($warehouseCode, $warehouseName) {
+        $warehouseReadings = $this->latestDeviceReadings->filter(function (DeviceLatestStatus $reading) use ($warehouseCode, $warehouseName) {
             $readingCode = strtolower(trim((string) $reading->warehouse_code));
             $readingName = strtolower(trim((string) $reading->warehouse));
 
@@ -126,10 +126,10 @@ class WarehousesExport implements FromQuery, WithHeadings, WithMapping, ShouldAu
 
         return [
             'CO2' => $warehouseReadings->filter(
-                fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'CO2'
+                fn (DeviceLatestStatus $reading) => $this->normalizedDeviceType($reading->device_type) === 'CO2'
             )->count(),
             'PH3' => $warehouseReadings->filter(
-                fn (Reading $reading) => $this->normalizedDeviceType($reading->device_type) === 'PH3'
+                fn (DeviceLatestStatus $reading) => $this->normalizedDeviceType($reading->device_type) === 'PH3'
             )->count(),
         ];
     }

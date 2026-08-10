@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\Reading;
+use App\Models\DeviceLatestStatus;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
@@ -21,9 +22,9 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
 
     public function query()
     {
-        $query = Reading::whereIn('id', $this->latestReadingIds())
+        $query = DeviceLatestStatus::query()
             ->latest('recorded_at')
-            ->latest('id');
+            ->orderBy('sensor_device_id');
 
         $selectedRegion = trim((string) ($this->filters['region_code'] ?? ''));
         $selectedWarehouse = trim((string) ($this->filters['warehouse_code'] ?? ''));
@@ -115,11 +116,6 @@ class DevicesExport implements FromQuery, WithHeadings, WithMapping, ShouldAutoS
                 $this->styleSheet($event);
             },
         ];
-    }
-
-    private function latestReadingIds()
-    {
-        return Reading::latestIdsPerSensor();
     }
 
     private function styleSheet(AfterSheet $event): void

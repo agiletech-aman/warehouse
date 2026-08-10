@@ -6,10 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
+use App\Services\DeviceLatestStatusService;
 
 class Reading extends Model
 {
     use SoftDeletes;
+
+    /** @var array<int, ?string> */
+    private static array $originalSensorIds = [];
 
     protected $fillable = [
         'key',
@@ -49,6 +53,42 @@ class Reading extends Model
     public function device()
     {
         return $this->belongsTo(Device::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $reading): void {
+            self::$originalSensorIds[spl_object_id($reading)] = $reading->getOriginal('sensor_device_id');
+        });
+
+        // Keep the projection correct for every normal Eloquent write (web
+        // forms, factories, imports), not only the ingestion endpoint.
+        static::saved(function (self $reading): void {
+            $latestStatus = app(DeviceLatestStatusService::class);
+            $latestStatus->upsertFromReading($reading);
+
+            $objectId = spl_object_id($reading);
+            $originalSensorId = self::$originalSensorIds[$objectId] ?? null;
+            unset(self::$originalSensorIds[$objectId]);
+
+            if ($originalSensorId === null || $originalSensorId === $reading->sensor_device_id) {
+                return;
+            }
+
+            // A corrected sensor id must not leave a phantom projection row.
+            // Rebuild the old sensor from its remaining latest history, if any.
+            $replacement = static::query()
+                ->where('sensor_device_id', $originalSensorId)
+                ->latest('recorded_at')
+                ->latest('id')
+                ->first();
+
+            if ($replacement) {
+                $latestStatus->upsertFromReading($replacement);
+            } else {
+                DeviceLatestStatus::query()->whereKey($originalSensorId)->delete();
+            }
+        });
     }
 
     public static function normalizeLevel(mixed $readingValue, mixed $level): string

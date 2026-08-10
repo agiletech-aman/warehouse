@@ -36,7 +36,7 @@ class MasterAlertApiTest extends TestCase
         );
     }
 
-    public function test_master_alerts_combine_co2_and_ph3_with_row_specific_device_type_ids(): void
+    public function test_master_alerts_filter_device_type_before_counting_and_pagination(): void
     {
         $this->createReading('ph3', 'severe');
         $this->createReading('co2', 'critical', 1);
@@ -44,13 +44,13 @@ class MasterAlertApiTest extends TestCase
         $response = $this->getJson('/api/master-alerts?deviceTypeId=30001&pageSize=10');
 
         $response->assertOk()
-            ->assertJsonPath('totalCount', 2)
-            ->assertJsonCount(2, 'data');
+            ->assertJsonPath('totalCount', 1)
+            ->assertJsonCount(1, 'data');
 
         $alertsByType = collect($response->json('data'))->keyBy('alertType');
 
         $this->assertSame(30001, $alertsByType->get('SEVERE')['deviceTypeId']);
-        $this->assertSame(30000, $alertsByType->get('CRITICAL')['deviceTypeId']);
+        $this->assertNull($alertsByType->get('CRITICAL'));
     }
 
     public function test_missing_level_is_returned_as_normal_instead_of_being_dropped(): void
@@ -290,15 +290,13 @@ class MasterAlertApiTest extends TestCase
 
         $this->getJson("/api/master-alerts/devices/{$warehouse->nms_id}")
             ->assertOk()
-            ->assertJsonPath('totalCount', 1)
+            ->assertJsonPath('totalCount', 0)
             ->assertJsonPath('pageNumber', 1)
             ->assertJsonPath('pageSize', 20)
-            ->assertJsonPath('totalPages', 1)
+            ->assertJsonPath('totalPages', 0)
             ->assertJsonPath('warehouseNmsId', $warehouse->nms_id)
             ->assertJsonPath('warehouseId', $warehouse->nms_id)
-            ->assertJsonPath('data.0.warehouse', 'Warehouse One')
-            ->assertJsonPath('data.0.code', $first->sensor_device_id)
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(0, 'data');
     }
 
     public function test_master_alert_devices_return_all_types_with_pagination_without_warehouse_id(): void
