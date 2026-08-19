@@ -1,0 +1,4 @@
+- [ ] Update sidebar collapse UI: when collapsed, show only logo (image) and hide logo text + reduce logo wrapper padding
+- [ ] Ensure collapsed state applies to logo container so spacing matches 80px sidebar
+- [ ] Verify toggle button persists state and doesn’t break alignment
+- [ ] Manual test: toggle sidebar open/close and check topbar + menu text visibility

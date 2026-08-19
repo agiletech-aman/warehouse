@@ -1,0 +1,137 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Alert;
+use App\Models\Admin;
+use App\Models\Region;
+use App\Models\Reading;
+use App\Models\Warehouse;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use Tests\TestCase;
+
+class ReadingModuleTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_reading_module_routes_are_available(): void
+    {
+        $admin = Admin::factory()->create();
+        $session = [
+            'admin_id' => $admin->id,
+            'admin_name' => $admin->name,
+            'admin_email' => $admin->email,
+        ];
+
+        $this->withSession($session)->get('/readings')
+            ->assertStatus(200)
+            ->assertSee('Readings');
+
+        $this->withSession($session)->get('/readings/create')
+            ->assertStatus(200)
+            ->assertSee('Add Reading');
+    }
+
+    public function test_readings_data_endpoint_returns_only_requested_page(): void
+    {
+        $admin = Admin::factory()->create();
+
+        foreach (range(1, 3) as $index) {
+            Reading::create([
+                'sensor_device_id' => 'SENSOR-' . $index,
+                'device_name' => 'Device ' . $index,
+                'device_type' => 'Temperature',
+                'reading_value' => 20 + $index,
+                'unit' => 'C',
+                'region' => 'North',
+                'warehouse' => 'Warehouse ' . $index,
+                'level' => 'normal',
+                'status' => 'online',
+                'recorded_at' => now()->subMinutes($index),
+            ]);
+        }
+
+        $this->withSession([
+            'admin_id' => $admin->id,
+            'admin_name' => $admin->name,
+            'admin_email' => $admin->email,
+        ])->getJson('/readings/data?draw=7&start=0&length=2')
+            ->assertOk()
+            ->assertJsonPath('draw', 7)
+            ->assertJsonPath('recordsTotal', 3)
+            ->assertJsonPath('recordsFiltered', 3)
+            ->assertJsonCount(2, 'data');
+    }
+
+    public function test_sensor_reading_sends_alert_by_warehouse(): void
+    {
+        Mail::fake();
+
+        $region = Region::create([
+            'region_code' => 'RE-AHM',
+            'region_name' => 'AHMEDABAD',
+            'status' => 'active',
+        ]);
+
+        Warehouse::create([
+            'region_id' => $region->id,
+            'warehouse_code' => 'WH001',
+            'warehouse_name' => 'ANAND',
+            'manager_name' => 'Deepka Sharma',
+            'manager_email' => 'manager@example.com',
+            'manager_phone' => null,
+            'status' => 'active',
+        ]);
+
+        $this->postJson('/api/readings', [
+            'key' => 'test-key',
+            'readings' => [
+                [
+                    'device_id' => 'TEMP_192_168_1_101_1',
+                    'device_name' => 'Temperature Sensor',
+                    'device_type' => 'Temperature',
+                    'device_ip' => '192.168.1.101',
+                    'unit' => 'C',
+                    'port' => 1,
+                    'region' => 'AHMEDABAD',
+                    'region_code' => 'RE-AHM',
+                    'warehouse' => 'ANAND',
+                    'warehouse_code' => 'WH001',
+                    'value' => 55,
+                    'level' => 'critical',
+                    'status' => 'online',
+                ],
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('alerting.attempts', 1)
+            ->assertJsonPath('alerting.alerts_created', 1)
+            ->assertJsonPath('alerting.alert_emails_sent', 1);
+
+        $reading = Reading::first();
+
+        $this->assertNotNull($reading);
+        $this->assertDatabaseHas('alerts', [
+            'device_id' => 'TEMP_192_168_1_101_1',
+            'reading_id' => $reading->id,
+            'type' => 'critical',
+            'alert_type' => 'high_co2',
+            'active' => true,
+        ]);
+        $this->assertSame(1, Alert::count());
+    }
+
+    public function test_sensor_reading_rejects_an_invalid_api_key(): void
+    {
+        $this->postJson('/api/readings', [
+            'key' => 'wrong-key',
+            'readings' => [[
+                'device_id' => 'DEVICE-1',
+                'value' => 10,
+            ]],
+        ])->assertUnauthorized();
+
+        $this->assertDatabaseCount('readings', 0);
+    }
+}
