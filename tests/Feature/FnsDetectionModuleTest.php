@@ -7,6 +7,7 @@ use App\Models\FnsDetection;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class FnsDetectionModuleTest extends TestCase
@@ -75,7 +76,40 @@ class FnsDetectionModuleTest extends TestCase
             ->assertJsonPath('recordsTotal', 2)
             ->assertJsonPath('recordsFiltered', 1)
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.detection_type', 'smoke');
+            ->assertJsonPath('data.0.detection_type', 'smoke')
+            ->assertJsonPath('data.0.name', 'Godown Camera')
+            ->assertJsonPath('data.0.camera_ip', '192.168.1.101')
+            ->assertJsonPath('data.0.snapshot_url', Storage::disk('public')->url('snapshots/smoke.jpg'));
+    }
+
+    public function test_api_stores_a_base64_snapshot_as_a_public_image_file(): void
+    {
+        Storage::fake('public');
+        $base64Snapshot = 'data:image/png;base64,'
+            .'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL91wAAAABJRU5ErkJggg==';
+
+        $response = $this->postJson('/api/fns/detections', [
+            'camera_ip' => '192.168.1.177',
+            'camera_name' => 'WH-007 Cam 1',
+            'warehouse_code' => 'WH-007',
+            'detection_type' => 'fire',
+            'confidence' => 0.93,
+            'snapshot' => $base64Snapshot,
+        ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('success', true);
+
+        $snapshotPath = $response->json('data.snapshot_path');
+
+        $this->assertIsString($snapshotPath);
+        $this->assertMatchesRegularExpression('#^snapshots/.+\\.png$#', $snapshotPath);
+        Storage::disk('public')->assertExists($snapshotPath);
+        $this->assertDatabaseHas('fns_detections', [
+            'snapshot_path' => $snapshotPath,
+        ]);
+        $response->assertJsonPath('data.snapshot_url', Storage::disk('public')->url($snapshotPath));
     }
 
     private function createDetection(

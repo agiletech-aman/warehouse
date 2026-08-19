@@ -301,6 +301,28 @@ class ReadingController extends Controller
                 'recorded_at' => $reading['recorded_at'] ?? now(),
             ];
 
+                        // Unknown-level readings: first one creates a row (so the sensor
+            // has a history baseline); every unknown after that just touches
+            // the timestamp on the last reading instead of creating a new row.
+            if ($storedLevel === 'unknown') {
+                $existingReading = Reading::where('sensor_device_id', $row['sensor_device_id'])
+                    ->where('key', $row['key'])
+                    ->orderByDesc('id')
+                    ->first();
+
+                if ($existingReading) {
+                    $existingReading->recorded_at = $row['recorded_at'];
+                    $existingReading->save();
+
+                    $latestStatus->upsertFromReading($existingReading);
+                    $row['reading_id'] = $existingReading->id;
+                    $rows[] = $row;
+                    continue;
+                }
+                // No existing reading for this sensor yet — fall through
+                // to normal create() below so the first entry gets saved.
+            }
+
             // The model observer covers regular Eloquent writes elsewhere.
             // Do this explicitly here so history and current state share one
             // transaction and the status write happens exactly once per row.

@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class FnsDetection extends Model
 {
@@ -33,6 +35,32 @@ class FnsDetection extends Model
         'confidence' => 'float',
         'detected_at' => 'datetime',
     ];
+
+    protected $appends = [
+        'snapshot_url',
+    ];
+
+    public function getSnapshotUrlAttribute(): ?string
+    {
+        $snapshotPath = trim((string) $this->snapshot_path);
+
+        if ($snapshotPath === '') {
+            return null;
+        }
+
+        // Preserve legacy external image URLs while new snapshots use the public disk.
+        if (Str::startsWith(strtolower($snapshotPath), ['http://', 'https://'])) {
+            return $snapshotPath;
+        }
+
+        $snapshotPath = ltrim($snapshotPath, '/');
+
+        if (Str::startsWith($snapshotPath, 'storage/')) {
+            $snapshotPath = Str::after($snapshotPath, 'storage/');
+        }
+
+        return Storage::disk('public')->url($snapshotPath);
+    }
 
     public function scopeFilter(Builder $query, array $filters): Builder
     {

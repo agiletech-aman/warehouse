@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\FnsDetection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class FnsDetectionController extends Controller
 {
@@ -107,6 +109,14 @@ class FnsDetectionController extends Controller
                 'numeric',
                 'between:0,1',
             ],
+            'snapshot' => [
+                'nullable',
+                // Supports a multipart image upload or a Base64 image string.
+            ],
+            'snapshot_base64' => [
+                'nullable',
+                'string',
+            ],
             'snapshot_path' => [
                 'nullable',
                 'string',
@@ -123,6 +133,10 @@ class FnsDetectionController extends Controller
             ],
         ]);
 
+        // Priority: multipart upload, Base64 snapshot, then the legacy path field.
+        $snapshotPath = $this->storeSnapshot($request, $validated)
+            ?? ($validated['snapshot_path'] ?? null);
+
         $detection = FnsDetection::create([
             'id' => (string) Str::uuid(),
             'camera_ip' => $validated['camera_ip'],
@@ -132,7 +146,7 @@ class FnsDetectionController extends Controller
             'compartment' => $validated['compartment'] ?? null,
             'detection_type' => $validated['detection_type'],
             'confidence' => $validated['confidence'],
-            'snapshot_path' => $validated['snapshot_path'] ?? null,
+            'snapshot_path' => $snapshotPath,
             'bounding_box' => $validated['bounding_box'] ?? null,
             'detected_at' => $validated['detected_at'] ?? now(),
         ]);
@@ -142,5 +156,93 @@ class FnsDetectionController extends Controller
             'message' => 'Detection saved successfully.',
             'data' => $detection,
         ], 201);
+    }
+
+    /**
+     * Store an uploaded image or a Base64 image on the public disk.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function storeSnapshot(Request $request, array $validated): ?string
+    {
+        if ($request->hasFile('snapshot')) {
+            $request->validate([
+                'snapshot' => ['required', 'image', 'max:5120'], // 5 MB
+            ]);
+
+            $snapshotPath = $request->file('snapshot')->storePublicly('snapshots', 'public');
+
+            if ($snapshotPath === false) {
+                throw new \RuntimeException('The snapshot image could not be stored.');
+            }
+
+            return $snapshotPath;
+        }
+
+        $base64Snapshot = $validated['snapshot_base64']
+            ?? ($validated['snapshot'] ?? null);
+
+        if ($base64Snapshot === null || $base64Snapshot === '') {
+            return null;
+        }
+
+        if (! is_string($base64Snapshot)) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'The snapshot must be an image file or a Base64-encoded image.',
+            ]);
+        }
+
+        [$contents, $extension] = $this->decodeBase64Image($base64Snapshot);
+        $snapshotPath = 'snapshots/'.Str::uuid().'.'.$extension;
+
+        if (! Storage::disk('public')->put($snapshotPath, $contents, ['visibility' => 'public'])) {
+            throw new \RuntimeException('The snapshot image could not be stored.');
+        }
+
+        return $snapshotPath;
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function decodeBase64Image(string $base64Snapshot): array
+    {
+        $encodedImage = trim($base64Snapshot);
+
+        if (preg_match('/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/s', $encodedImage, $matches)) {
+            $encodedImage = $matches[1];
+        }
+
+        $encodedImage = preg_replace('/\s+/', '', $encodedImage);
+        $contents = $encodedImage === null ? false : base64_decode($encodedImage, true);
+
+        if ($contents === false || $contents === '') {
+            throw ValidationException::withMessages([
+                'snapshot' => 'The snapshot must be a valid Base64-encoded image.',
+            ]);
+        }
+
+        if (strlen($contents) > 5 * 1024 * 1024) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'The decoded snapshot image may not be greater than 5 MB.',
+            ]);
+        }
+
+        $imageInfo = @getimagesizefromstring($contents);
+        $mimeType = $imageInfo['mime'] ?? null;
+        $extensions = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+        ];
+
+        if (! isset($extensions[$mimeType])) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'The snapshot must be a JPEG, PNG, GIF, or WebP image.',
+            ]);
+        }
+
+        return [$contents, $extensions[$mimeType]];
     }
 }

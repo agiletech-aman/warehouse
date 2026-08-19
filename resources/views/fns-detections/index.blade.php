@@ -14,7 +14,8 @@
             <table id="fnsDetectionsTable" class="table table-hover align-middle mb-0 w-100">
                 <thead>
                     <tr>
-                        <th>Camera</th>
+                        <th>Name</th>
+                        <th>Camera IP</th>
                         <th>Warehouse</th>
                         <th>Godown / Compartment</th>
                         <th>Detection</th>
@@ -39,6 +40,35 @@
             return $('<div>').text(displayValue).html();
         };
 
+        const renderSnapshot = function (value, type) {
+            if (!value) {
+                return '-';
+            }
+
+            const snapshotUrl = String(value);
+
+            try {
+                const parsedUrl = new URL(snapshotUrl, window.location.origin);
+
+                if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                    return '-';
+                }
+            } catch (error) {
+                return '-';
+            }
+
+            if (type !== 'display') {
+                return snapshotUrl;
+            }
+
+            const escapedUrl = escapeText(snapshotUrl);
+
+            return '<a href="' + escapedUrl + '" target="_blank" rel="noopener noreferrer">'
+                + '<img src="' + escapedUrl + '" alt="Detection snapshot" class="img-thumbnail" '
+                + 'style="width: 100px; height: 70px; object-fit: cover;">'
+                + '</a>';
+        };
+
         window.initWarehouseDataTable('#fnsDetectionsTable', {
             processing: true,
             serverSide: true,
@@ -53,7 +83,8 @@
                 url: '{{ route('fns-detections.data') }}'
             },
             columns: [
-                { data: 'camera', render: escapeText },
+                { data: 'name', render: escapeText },
+                { data: 'camera_ip', render: escapeText },
                 { data: 'warehouse_code', render: escapeText },
                 { data: 'location', render: escapeText },
                 {
@@ -75,7 +106,12 @@
                         return escapeText(value) + '%';
                     }
                 },
-                { data: 'snapshot_path', render: escapeText },
+                {
+                    data: 'snapshot_url',
+                    orderable: false,
+                    searchable: false,
+                    render: renderSnapshot
+                },
                 { data: 'bounding_box', render: escapeText },
                 { data: 'detected_at', render: escapeText }
             ]

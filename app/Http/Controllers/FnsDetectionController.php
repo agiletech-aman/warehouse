@@ -38,12 +38,14 @@ class FnsDetectionController extends Controller
             ->get()
             ->map(fn (FnsDetection $detection) => [
                 'id' => $detection->id,
-                'camera' => $this->joinParts($detection->camera_name, $detection->camera_ip),
+                'name' => $detection->camera_name ?: '-',
+                'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
                 'location' => $this->joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
                 'snapshot_path' => $detection->snapshot_path ?: '-',
+                'snapshot_url' => $detection->snapshot_url,
                 'bounding_box' => $detection->bounding_box ?: '-',
                 'detected_at' => $detection->detected_at?->format('d M Y H:i:s') ?: '-',
             ]);
