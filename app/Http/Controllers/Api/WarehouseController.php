@@ -37,6 +37,7 @@ class WarehouseController extends Controller
                 'id' => $warehouse->id,
                 'frs_id' => $warehouse->frs_id,
                 'nms_id' => $warehouse->nms_id,
+                'lynk_id'=> $warehouse->lynk_id,
 
                 'region_id' => $warehouse->region_id,
                 'region_frs_id' => $warehouse->region_frs_id,

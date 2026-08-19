@@ -20,7 +20,6 @@ class MasterAlertSummaryService
     {
         $cacheFilters = [
             'location' => $filters['location'] ?? null,
-            'warehouseCode' => $filters['warehouseCode'] ?? null,
             'state' => $filters['state'] ?? null,
             'fromDate' => $filters['fromDate'] ?? null,
             'toDate' => $filters['toDate'] ?? null,
@@ -149,17 +148,7 @@ class MasterAlertSummaryService
     private function applyFilters(Builder $query, array $filters): void
     {
         if (! empty($filters['location'])) {
-            $query->whereRaw(
-                'LOWER(TRIM(warehouse)) = ?',
-                [strtolower(trim($filters['location']))]
-            );
-        }
-
-        if (! empty($filters['warehouseCode'])) {
-            $query->whereRaw(
-                'LOWER(TRIM(warehouse_code)) = ?',
-                [strtolower(trim($filters['warehouseCode']))]
-            );
+            $query->whereRaw('LOWER(TRIM(warehouse)) = ?', [strtolower(trim($filters['location']))]);
         }
 
         if (! empty($filters['state'])) {

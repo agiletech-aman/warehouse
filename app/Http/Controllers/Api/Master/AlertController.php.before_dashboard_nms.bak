@@ -109,53 +109,20 @@ class AlertController extends Controller
     }
 
     public function dashboardApi(
-    Request $request,
-    MasterAlertSummaryService $summaryService,
-    ?string $warehouseNmsId = null
-): JsonResponse {
-    $validated = $request->validate([
-        'location' => 'nullable|string|max:150',
-        'state' => 'nullable|string|max:100',
-        'fromDate' => 'nullable|date',
-        'toDate' => 'nullable|date|after_or_equal:fromDate',
-    ]);
+        Request $request,
+        MasterAlertSummaryService $summaryService
+    ): JsonResponse {
+        $validated = $request->validate([
+            'location' => 'nullable|string|max:150',
+            'state' => 'nullable|string|max:100',
+            'fromDate' => 'nullable|date',
+            'toDate' => 'nullable|date|after_or_equal:fromDate',
+        ]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Optional Warehouse NMS ID
-    |--------------------------------------------------------------------------
-    |
-    | /master-alert-summary/dashboard
-    |     -> Existing all-warehouse response
-    |
-    | /master-alert-summary/dashboard/31
-    |     -> Only warehouse where nms_id = 31
-    |
-    */
-
-    if ($warehouseNmsId !== null && $warehouseNmsId !== '') {
-
-        $warehouse = Warehouse::query()
-            ->where('nms_id', (string) $warehouseNmsId)
-            ->first();
-
-        if (! $warehouse) {
-            return response()->json([
-                'message' => 'Warehouse not found.',
-                'warehouseNmsId' => $warehouseNmsId,
-            ], 404);
-        }
-
-        // Filter dashboard using stable warehouse code resolved from NMS ID.
-        $validated['warehouseCode'] = $warehouse->warehouse_code;
+        return response()->json($summaryService->fetchDashboard($validated));
     }
 
-    return response()->json(
-        $summaryService->fetchDashboard($validated)
-    );
-}
-
-public function statesApi(): JsonResponse
+    public function statesApi(): JsonResponse
     {
         $states = Region::query()
             ->whereNotNull('frs_id')

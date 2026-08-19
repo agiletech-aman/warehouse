@@ -14,6 +14,7 @@ class Warehouse extends Model
     protected $fillable = [
         'frs_id',
         'nms_id',
+        'lynk_id',
         'region_frs_id',
         'region_nms_id',
         'region_id',

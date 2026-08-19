@@ -146,8 +146,8 @@ class AlertController extends Controller
             ], 404);
         }
 
-        // Filter dashboard using stable warehouse code resolved from NMS ID.
-        $validated['warehouseCode'] = $warehouse->warehouse_code;
+        // Override location using warehouse resolved by NMS ID.
+        $validated['location'] = $warehouse->warehouse_name;
     }
 
     return response()->json(

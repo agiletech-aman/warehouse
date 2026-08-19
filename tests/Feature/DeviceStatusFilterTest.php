@@ -16,11 +16,12 @@ class DeviceStatusFilterTest extends TestCase
         $this->createReading('DEVICE-OFFLINE', 'offline');
 
         $response = $this->withSession(['admin_id' => 1])
-            ->getJson('/devices/data?status=online&draw=1&start=0&length=10');
+            ->get('/devices?status=online');
 
         $response->assertOk()
-            ->assertJsonFragment(['code' => 'DEVICE-ONLINE'])
-            ->assertJsonMissing(['code' => 'DEVICE-OFFLINE']);
+            ->assertSee('DEVICE-ONLINE')
+            ->assertDontSee('DEVICE-OFFLINE')
+            ->assertSee('value="online" selected', false);
     }
 
     public function test_devices_can_be_filtered_by_offline_status(): void
@@ -29,11 +30,12 @@ class DeviceStatusFilterTest extends TestCase
         $this->createReading('DEVICE-OFFLINE', 'offline');
 
         $response = $this->withSession(['admin_id' => 1])
-            ->getJson('/devices/data?status=offline&draw=1&start=0&length=10');
+            ->get('/devices?status=offline');
 
         $response->assertOk()
-            ->assertJsonFragment(['code' => 'DEVICE-OFFLINE'])
-            ->assertJsonMissing(['code' => 'DEVICE-ONLINE']);
+            ->assertSee('DEVICE-OFFLINE')
+            ->assertDontSee('DEVICE-ONLINE')
+            ->assertSee('value="offline" selected', false);
     }
 
     public function test_latest_device_status_uses_recorded_time_not_insertion_order(): void
@@ -57,10 +59,10 @@ class DeviceStatusFilterTest extends TestCase
         ]);
 
         $this->withSession(['admin_id' => 1])
-            ->getJson('/devices/data?status=online&draw=1&start=0&length=10')
+            ->get('/devices?status=online')
             ->assertOk()
-            ->assertJsonFragment(['name' => 'Newest Reading'])
-            ->assertJsonMissing(['name' => 'Late-arriving Old Reading']);
+            ->assertSee('Newest Reading')
+            ->assertDontSee('Late-arriving Old Reading');
     }
 
     private function createReading(string $deviceId, string $status): void
