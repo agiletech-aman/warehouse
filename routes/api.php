@@ -17,6 +17,7 @@ Route::post('/warehouse/login', [WarehouseController::class, 'login']);
 Route::post('/readings', [ReadingController::class, 'store']);
 Route::get('/fns/detections', [FnsDetectionController::class, 'index']);
 Route::post('/fns/detections', [FnsDetectionController::class, 'store']);
+Route::post('/fns/detections02', [FnsDetectionController::class, 'store02']);
 
 // Reading filters + severity counts (single API)
 Route::get('/readings/summary', [ReadingController::class, 'indexWithSummary']);

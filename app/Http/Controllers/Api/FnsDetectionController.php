@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\FnsDetection;
+use App\Models\FnsDetection02;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -205,44 +206,138 @@ class FnsDetectionController extends Controller
     /**
      * @return array{0: string, 1: string}
      */
-    private function decodeBase64Image(string $base64Snapshot): array
+        private function decodeBase64Image(string $base64Snapshot): array
+        {
+            $encodedImage = trim($base64Snapshot);
+
+            if (preg_match('/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/s', $encodedImage, $matches)) {
+                $encodedImage = $matches[1];
+            }
+
+            $encodedImage = preg_replace('/\s+/', '', $encodedImage);
+            $contents = $encodedImage === null ? false : base64_decode($encodedImage, true);
+
+            if ($contents === false || $contents === '') {
+                throw ValidationException::withMessages([
+                    'snapshot' => 'The snapshot must be a valid Base64-encoded image.',
+                ]);
+            }
+
+            if (strlen($contents) > 5 * 1024 * 1024) {
+                throw ValidationException::withMessages([
+                    'snapshot' => 'The decoded snapshot image may not be greater than 5 MB.',
+                ]);
+            }
+
+            $imageInfo = @getimagesizefromstring($contents);
+            $mimeType = $imageInfo['mime'] ?? null;
+            $extensions = [
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/gif' => 'gif',
+                'image/webp' => 'webp',
+            ];
+
+            if (! isset($extensions[$mimeType])) {
+                throw ValidationException::withMessages([
+                    'snapshot' => 'The snapshot must be a JPEG, PNG, GIF, or WebP image.',
+                ]);
+            }
+
+            return [$contents, $extensions[$mimeType]];
+        }
+
+            public function store02(Request $request): JsonResponse
     {
-        $encodedImage = trim($base64Snapshot);
+        $validated = $request->validate([
+            'camera_ip' => [
+                'required',
+                'string',
+                'max:45',
+            ],
+            'camera_name' => [
+                'required',
+                'string',
+                'max:255',
+            ],
+            'warehouse_code' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'godown' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'compartment' => [
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'detection_type' => [
+                'required',
+                Rule::in([
+                    'person',
+                    'fire',
+                    'smoke',
+                    'weapon',
+                    'intrusion',
+                ]),
+            ],
+            'confidence' => [
+                'required',
+                'numeric',
+                'between:0,1',
+            ],
+            'snapshot' => [
+                'nullable',
+                // Supports a multipart image upload or a Base64 image string.
+            ],
+            'snapshot_base64' => [
+                'nullable',
+                'string',
+            ],
+            'snapshot_path' => [
+                'nullable',
+                'string',
+                'max:500',
+            ],
+            'bounding_box' => [
+                'nullable',
+                'string',
+                'max:100',
+            ],
+            'detected_at' => [
+                'nullable',
+                'date',
+            ],
+        ]);
 
-        if (preg_match('/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/s', $encodedImage, $matches)) {
-            $encodedImage = $matches[1];
-        }
+        // Priority: multipart upload, Base64 snapshot, then the legacy path field.
+        $snapshotPath = $this->storeSnapshot($request, $validated)
+            ?? ($validated['snapshot_path'] ?? null);
 
-        $encodedImage = preg_replace('/\s+/', '', $encodedImage);
-        $contents = $encodedImage === null ? false : base64_decode($encodedImage, true);
+        $detection = FnsDetection02::create([
+            'id' => (string) Str::uuid(),
+            'camera_ip' => $validated['camera_ip'],
+            'camera_name' => $validated['camera_name'],
+            'warehouse_code' => $validated['warehouse_code'] ?? null,
+            'godown' => $validated['godown'] ?? null,
+            'compartment' => $validated['compartment'] ?? null,
+            'detection_type' => $validated['detection_type'],
+            'confidence' => $validated['confidence'],
+            'snapshot_path' => $snapshotPath,
+            'bounding_box' => $validated['bounding_box'] ?? null,
+            'detected_at' => $validated['detected_at'] ?? now(),
+        ]);
 
-        if ($contents === false || $contents === '') {
-            throw ValidationException::withMessages([
-                'snapshot' => 'The snapshot must be a valid Base64-encoded image.',
-            ]);
-        }
-
-        if (strlen($contents) > 5 * 1024 * 1024) {
-            throw ValidationException::withMessages([
-                'snapshot' => 'The decoded snapshot image may not be greater than 5 MB.',
-            ]);
-        }
-
-        $imageInfo = @getimagesizefromstring($contents);
-        $mimeType = $imageInfo['mime'] ?? null;
-        $extensions = [
-            'image/jpeg' => 'jpg',
-            'image/png' => 'png',
-            'image/gif' => 'gif',
-            'image/webp' => 'webp',
-        ];
-
-        if (! isset($extensions[$mimeType])) {
-            throw ValidationException::withMessages([
-                'snapshot' => 'The snapshot must be a JPEG, PNG, GIF, or WebP image.',
-            ]);
-        }
-
-        return [$contents, $extensions[$mimeType]];
+        return response()->json([
+            'success' => true,
+            'message' => 'Detection saved successfully.',
+            'data' => $detection,
+        ], 201);
     }
+
+
 }
