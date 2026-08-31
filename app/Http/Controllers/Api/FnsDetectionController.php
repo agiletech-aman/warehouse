@@ -194,7 +194,7 @@ class FnsDetectionController extends Controller
         }
 
         [$contents, $extension] = $this->decodeBase64Image($base64Snapshot);
-        $snapshotPath = 'snapshots/'.Str::uuid().'.'.$extension;
+        $snapshotPath = 'snapshots/' . Str::uuid() . '.' . $extension;
 
         if (! Storage::disk('public')->put($snapshotPath, $contents, ['visibility' => 'public'])) {
             throw new \RuntimeException('The snapshot image could not be stored.');
@@ -206,138 +206,237 @@ class FnsDetectionController extends Controller
     /**
      * @return array{0: string, 1: string}
      */
-        private function decodeBase64Image(string $base64Snapshot): array
-        {
-            $encodedImage = trim($base64Snapshot);
+    private function decodeBase64Image(string $base64Snapshot): array
+    {
+        $encodedImage = trim($base64Snapshot);
 
-            if (preg_match('/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/s', $encodedImage, $matches)) {
-                $encodedImage = $matches[1];
-            }
-
-            $encodedImage = preg_replace('/\s+/', '', $encodedImage);
-            $contents = $encodedImage === null ? false : base64_decode($encodedImage, true);
-
-            if ($contents === false || $contents === '') {
-                throw ValidationException::withMessages([
-                    'snapshot' => 'The snapshot must be a valid Base64-encoded image.',
-                ]);
-            }
-
-            if (strlen($contents) > 5 * 1024 * 1024) {
-                throw ValidationException::withMessages([
-                    'snapshot' => 'The decoded snapshot image may not be greater than 5 MB.',
-                ]);
-            }
-
-            $imageInfo = @getimagesizefromstring($contents);
-            $mimeType = $imageInfo['mime'] ?? null;
-            $extensions = [
-                'image/jpeg' => 'jpg',
-                'image/png' => 'png',
-                'image/gif' => 'gif',
-                'image/webp' => 'webp',
-            ];
-
-            if (! isset($extensions[$mimeType])) {
-                throw ValidationException::withMessages([
-                    'snapshot' => 'The snapshot must be a JPEG, PNG, GIF, or WebP image.',
-                ]);
-            }
-
-            return [$contents, $extensions[$mimeType]];
+        if (preg_match('/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/s', $encodedImage, $matches)) {
+            $encodedImage = $matches[1];
         }
 
-            public function store02(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'camera_ip' => [
-                'required',
-                'string',
-                'max:45',
-            ],
-            'camera_name' => [
-                'required',
-                'string',
-                'max:255',
-            ],
-            'warehouse_code' => [
-                'nullable',
-                'string',
-                'max:100',
-            ],
-            'godown' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-            'compartment' => [
-                'nullable',
-                'string',
-                'max:255',
-            ],
-            'detection_type' => [
-                'required',
-                Rule::in([
-                    'person',
-                    'fire',
-                    'smoke',
-                    'weapon',
-                    'intrusion',
-                ]),
-            ],
-            'confidence' => [
-                'required',
-                'numeric',
-                'between:0,1',
-            ],
-            'snapshot' => [
-                'nullable',
-                // Supports a multipart image upload or a Base64 image string.
-            ],
-            'snapshot_base64' => [
-                'nullable',
-                'string',
-            ],
-            'snapshot_path' => [
-                'nullable',
-                'string',
-                'max:500',
-            ],
-            'bounding_box' => [
-                'nullable',
-                'string',
-                'max:100',
-            ],
-            'detected_at' => [
-                'nullable',
-                'date',
-            ],
-        ]);
+        $encodedImage = preg_replace('/\s+/', '', $encodedImage);
+        $contents = $encodedImage === null ? false : base64_decode($encodedImage, true);
 
-        // Priority: multipart upload, Base64 snapshot, then the legacy path field.
-        $snapshotPath = $this->storeSnapshot($request, $validated)
-            ?? ($validated['snapshot_path'] ?? null);
+        if ($contents === false || $contents === '') {
+            throw ValidationException::withMessages([
+                'snapshot' => 'The snapshot must be a valid Base64-encoded image.',
+            ]);
+        }
 
-        $detection = FnsDetection02::create([
-            'id' => (string) Str::uuid(),
-            'camera_ip' => $validated['camera_ip'],
-            'camera_name' => $validated['camera_name'],
-            'warehouse_code' => $validated['warehouse_code'] ?? null,
-            'godown' => $validated['godown'] ?? null,
-            'compartment' => $validated['compartment'] ?? null,
-            'detection_type' => $validated['detection_type'],
-            'confidence' => $validated['confidence'],
-            'snapshot_path' => $snapshotPath,
-            'bounding_box' => $validated['bounding_box'] ?? null,
-            'detected_at' => $validated['detected_at'] ?? now(),
-        ]);
+        if (strlen($contents) > 5 * 1024 * 1024) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'The decoded snapshot image may not be greater than 5 MB.',
+            ]);
+        }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Detection saved successfully.',
-            'data' => $detection,
-        ], 201);
+        $imageInfo = @getimagesizefromstring($contents);
+        $mimeType = $imageInfo['mime'] ?? null;
+        $extensions = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+        ];
+
+        if (! isset($extensions[$mimeType])) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'The snapshot must be a JPEG, PNG, GIF, or WebP image.',
+            ]);
+        }
+
+        return [$contents, $extensions[$mimeType]];
     }
 
+    // public function store02(Request $request): JsonResponse
+    // {
+    //     $validated = $request->validate([
+    //         'camera_ip' => [
+    //             'required',
+    //             'string',
+    //             'max:45',
+    //         ],
+    //         'camera_name' => [
+    //             'required',
+    //             'string',
+    //             'max:255',
+    //         ],
+    //         'warehouse_code' => [
+    //             'nullable',
+    //             'string',
+    //             'max:100',
+    //         ],
+    //         'godown' => [
+    //             'nullable',
+    //             'string',
+    //             'max:255',
+    //         ],
+    //         'compartment' => [
+    //             'nullable',
+    //             'string',
+    //             'max:255',
+    //         ],
+    //         'detection_type' => [
+    //             'required',
+    //             Rule::in([
+    //                 'person',
+    //                 'fire',
+    //                 'smoke',
+    //                 'weapon',
+    //                 'intrusion',
+    //             ]),
+    //         ],
+    //         'confidence' => [
+    //             'required',
+    //             'numeric',
+    //             'between:0,1',
+    //         ],
+    //         'snapshot' => [
+    //             'nullable',
+    //             // Supports a multipart image upload or a Base64 image string.
+    //         ],
+    //         'snapshot_base64' => [
+    //             'nullable',
+    //             'string',
+    //         ],
+    //         'snapshot_path' => [
+    //             'nullable',
+    //             'string',
+    //             'max:500',
+    //         ],
+    //         'bounding_box' => [
+    //             'nullable',
+    //             'string',
+    //             'max:100',
+    //         ],
+    //         'detected_at' => [
+    //             'nullable',
+    //             'date',
+    //         ],
+    //     ]);
 
+    //     // Priority: multipart upload, Base64 snapshot, then the legacy path field.
+    //     $snapshotPath = $this->storeSnapshot($request, $validated)
+    //         ?? ($validated['snapshot_path'] ?? null);
+
+    //     $detection = FnsDetection02::create([
+    //         'id' => (string) Str::uuid(),
+    //         'camera_ip' => $validated['camera_ip'],
+    //         'camera_name' => $validated['camera_name'],
+    //         'warehouse_code' => $validated['warehouse_code'] ?? null,
+    //         'godown' => $validated['godown'] ?? null,
+    //         'compartment' => $validated['compartment'] ?? null,
+    //         'detection_type' => $validated['detection_type'],
+    //         'confidence' => $validated['confidence'],
+    //         'snapshot_path' => $snapshotPath,
+    //         'bounding_box' => $validated['bounding_box'] ?? null,
+    //         'detected_at' => $validated['detected_at'] ?? now(),
+    //     ]);
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'message' => 'Detection saved successfully.',
+    //         'data' => $detection,
+    //     ], 201);
+    // }
+
+    public function store02(Request $request): JsonResponse
+{
+    // Static Secret Key
+    $secretKey = 'FIRESMOKE2026';
+
+    if ($request->header('X-Push-Secret') !== $secretKey) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Invalid push secret',
+        ], 403);
+    }
+
+    $validated = $request->validate([
+        'camera_ip' => [
+            'required',
+            'string',
+            'max:45',
+        ],
+        'camera_name' => [
+            'required',
+            'string',
+            'max:255',
+        ],
+        'warehouse_code' => [
+            'nullable',
+            'string',
+            'max:100',
+        ],
+        'godown' => [
+            'nullable',
+            'string',
+            'max:255',
+        ],
+        'compartment' => [
+            'nullable',
+            'string',
+            'max:255',
+        ],
+        'detection_type' => [
+            'required',
+            Rule::in([
+                'person',
+                'fire',
+                'smoke',
+                'weapon',
+                'intrusion',
+            ]),
+        ],
+        'confidence' => [
+            'required',
+            'numeric',
+            'between:0,1',
+        ],
+        'snapshot' => [
+            'nullable',
+        ],
+        'snapshot_base64' => [
+            'nullable',
+            'string',
+        ],
+        'snapshot_path' => [
+            'nullable',
+            'string',
+            'max:500',
+        ],
+        'bounding_box' => [
+            'nullable',
+            'string',
+            'max:100',
+        ],
+        'detected_at' => [
+            'nullable',
+            'date',
+        ],
+    ]);
+
+    // Priority: multipart upload, Base64 snapshot, then the legacy path field.
+    $snapshotPath = $this->storeSnapshot($request, $validated)
+        ?? ($validated['snapshot_path'] ?? null);
+
+    $detection = FnsDetection02::create([
+        'id' => (string) Str::uuid(),
+        'camera_ip' => $validated['camera_ip'],
+        'camera_name' => $validated['camera_name'],
+        'warehouse_code' => $validated['warehouse_code'] ?? null,
+        'godown' => $validated['godown'] ?? null,
+        'compartment' => $validated['compartment'] ?? null,
+        'detection_type' => $validated['detection_type'],
+        'confidence' => $validated['confidence'],
+        'snapshot_path' => $snapshotPath,
+        'bounding_box' => $validated['bounding_box'] ?? null,
+        'detected_at' => $validated['detected_at'] ?? now(),
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Detection saved successfully.',
+        'data' => $detection,
+    ], 201);
+}
 }
