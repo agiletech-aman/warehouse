@@ -92,16 +92,21 @@
                             Region
                         </label>
 
-                        <select
-                            id="region_code"
-                            name="region_code"
-                            class="form-select">
-
-                            <option value="">
+                        <div class="dropdown">
+                            <button
+                                type="button"
+                                id="regionDropdownBtn"
+                                class="form-select text-start"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                aria-expanded="false">
                                 All Regions
-                            </option>
+                            </button>
 
-                        </select>
+                            <ul class="dropdown-menu p-2 w-100" id="regionCheckboxList" style="max-height: 260px; overflow-y: auto;"></ul>
+                        </div>
+
+                        <input type="hidden" id="region_code" name="region_code" value="">
                     </div>
 
 
@@ -136,16 +141,21 @@
                             Warehouse
                         </label>
 
-                        <select
-                            id="warehouse_code"
-                            name="warehouse_code"
-                            class="form-select">
-
-                            <option value="">
+                        <div class="dropdown">
+                            <button
+                                type="button"
+                                id="warehouseDropdownBtn"
+                                class="form-select text-start"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                aria-expanded="false">
                                 All Warehouses
-                            </option>
+                            </button>
 
-                        </select>
+                            <ul class="dropdown-menu p-2 w-100" id="warehouseCheckboxList" style="max-height: 260px; overflow-y: auto;"></ul>
+                        </div>
+
+                        <input type="hidden" id="warehouse_code" name="warehouse_code" value="">
                     </div>
 
 
@@ -165,22 +175,22 @@
                                 All Levels
                             </button>
 
-                            <ul class="dropdown-menu p-2 w-100" aria-labelledby="levelDropdownBtn">
+                            <ul class="dropdown-menu p-2 w-100" id="levelCheckboxList" aria-labelledby="levelDropdownBtn">
                                 <li>
                                     <div class="form-check">
-                                        <input class="form-check-input level-option" type="checkbox" value="normal" id="level_normal">
+                                        <input class="form-check-input dd-check" type="checkbox" value="normal" data-label="Normal" id="level_normal">
                                         <label class="form-check-label" for="level_normal">Normal</label>
                                     </div>
                                 </li>
                                 <li>
                                     <div class="form-check">
-                                        <input class="form-check-input level-option" type="checkbox" value="severe" id="level_severe">
+                                        <input class="form-check-input dd-check" type="checkbox" value="severe" data-label="Severe" id="level_severe">
                                         <label class="form-check-label" for="level_severe">Severe</label>
                                     </div>
                                 </li>
                                 <li>
                                     <div class="form-check">
-                                        <input class="form-check-input level-option" type="checkbox" value="critical" id="level_critical">
+                                        <input class="form-check-input dd-check" type="checkbox" value="critical" data-label="Critical" id="level_critical">
                                         <label class="form-check-label" for="level_critical">Critical</label>
                                     </div>
                                 </li>
@@ -193,18 +203,29 @@
                 </div>
 
 
-                <div class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-2">
+                <div class="d-flex justify-content-between align-items-center mt-4 flex-wrap gap-3">
 
                     <div id="colvisContainer"></div>
 
-                    <button
-                        type="button"
-                        id="btnReset"
-                        class="btn btn-outline-secondary rounded-pill">
+                    <div class="d-flex align-items-center gap-3 flex-wrap">
 
-                        ↺ Reset Filters
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="current_only" name="current_only">
+                            <label class="form-check-label fw-semibold" for="current_only">
+                                Current Data Only
+                            </label>
+                        </div>
 
-                    </button>
+                        <button
+                            type="button"
+                            id="btnReset"
+                            class="btn btn-outline-secondary rounded-pill">
+
+                            ↺ Reset Filters
+
+                        </button>
+
+                    </div>
 
                 </div>
 
@@ -450,6 +471,55 @@
     }
 
 
+    /* ---------------- CHECKBOX DROPDOWNS ---------------- */
+
+    function renderCheckboxList(listId, items) {
+
+        const list = document.getElementById(listId);
+
+        list.innerHTML = items.map(item => `
+            <li>
+                <div class="form-check">
+                    <input class="form-check-input dd-check" type="checkbox" value="${item.value}" data-label="${item.label}" id="${listId}_${item.value}">
+                    <label class="form-check-label" for="${listId}_${item.value}">${item.label}</label>
+                </div>
+            </li>
+        `).join('');
+    }
+
+    function syncCheckboxDropdown(listId, hiddenInputId, buttonId, defaultLabel) {
+
+        const list = document.getElementById(listId);
+        const hiddenInput = document.getElementById(hiddenInputId);
+        const btn = document.getElementById(buttonId);
+
+        const checked = Array.from(list.querySelectorAll('input[type="checkbox"]:checked'));
+
+        hiddenInput.value = checked.map(cb => cb.value).join(',');
+
+        btn.textContent = checked.length
+            ? checked.map(cb => cb.dataset.label).join(', ')
+            : defaultLabel;
+
+        hiddenInput.dispatchEvent(new Event('change'));
+    }
+
+    function setupCheckboxDropdown(listId, hiddenInputId, buttonId, defaultLabel, onChange) {
+
+        document
+            .getElementById(listId)
+            .addEventListener('change', e => {
+
+                if (!e.target.matches('input[type="checkbox"]')) return;
+
+                syncCheckboxDropdown(listId, hiddenInputId, buttonId, defaultLabel);
+
+                if (onChange) onChange();
+
+            });
+    }
+
+
     /* ---------------- REGIONS ---------------- */
 
     async function loadRegions() {
@@ -460,23 +530,12 @@
 
         const json = await response.json();
 
-        const select = document.getElementById('region_code');
+        const items = (json.data?.data || json.data || []).map(region => ({
+            value: region.region_code,
+            label: region.region_name
+        }));
 
-        select.innerHTML =
-            '<option value="">All Regions</option>';
-
-        (json.data?.data || json.data || []).forEach(region => {
-
-            const option = document.createElement('option');
-
-            option.value = region.region_code;
-
-            option.textContent =
-                region.region_name;
-
-            select.appendChild(option);
-
-        });
+        renderCheckboxList('regionCheckboxList', items);
     }
 
 
@@ -484,13 +543,8 @@
 
     async function loadWarehouses(regionCode) {
 
-        const select =
-            document.getElementById('warehouse_code');
-
-        select.disabled = true;
-
-        select.innerHTML =
-            '<option>Loading...</option>';
+        const btn = document.getElementById('warehouseDropdownBtn');
+        btn.textContent = 'Loading...';
 
         const response = await fetch(
             API.warehouses +
@@ -500,18 +554,13 @@
 
         const json = await response.json();
 
-        select.innerHTML =
-            '<option value="">All Warehouses</option>';
+        const items = (json.data?.data || json.data || []).map(w => ({
+            value: w.warehouse_code,
+            label: w.warehouse_name
+        }));
 
-        (json.data?.data || json.data || []).forEach(w => {
-
-            select.innerHTML +=
-                `<option value="${w.warehouse_code}">
-                ${w.warehouse_name}
-             </option>`;
-        });
-
-        select.disabled = false;
+        renderCheckboxList('warehouseCheckboxList', items);
+        syncCheckboxDropdown('warehouseCheckboxList', 'warehouse_code', 'warehouseDropdownBtn', 'All Warehouses');
     }
 
 
@@ -718,7 +767,7 @@
 
         document
             .querySelectorAll(
-                '#filtersForm input:not(.level-option),#filtersForm select'
+                '#filtersForm input:not(.dd-check),#filtersForm select'
             )
             .forEach(el => {
 
@@ -731,53 +780,15 @@
     }
 
 
-    function setupLevelFilter() {
-
-        const checkboxes = document.querySelectorAll('.level-option');
-        const hiddenInput = document.getElementById('level');
-        const btn = document.getElementById('levelDropdownBtn');
-
-        const labels = {
-            normal: 'Normal',
-            severe: 'Severe',
-            critical: 'Critical'
-        };
-
-        function sync() {
-
-            const checked = Array.from(checkboxes)
-                .filter(cb => cb.checked)
-                .map(cb => cb.value);
-
-            hiddenInput.value = checked.join(',');
-
-            btn.textContent = checked.length
-                ? checked.map(v => labels[v]).join(', ')
-                : 'All Levels';
-
-            hiddenInput.dispatchEvent(new Event('change'));
-        }
-
-        checkboxes.forEach(cb => cb.addEventListener('change', sync));
-    }
-
-
     function setupDropdowns() {
 
-        document
-            .getElementById('region_code')
-            .addEventListener(
-                'change',
-                async e => {
+        setupCheckboxDropdown('regionCheckboxList', 'region_code', 'regionDropdownBtn', 'All Regions', () => {
+            loadWarehouses(document.getElementById('region_code').value);
+        });
 
-                    let value = e.target.value;
+        setupCheckboxDropdown('warehouseCheckboxList', 'warehouse_code', 'warehouseDropdownBtn', 'All Warehouses');
 
-                    await loadWarehouses(value);
-
-                    autoRefresh();
-
-                }
-            );
+        setupCheckboxDropdown('levelCheckboxList', 'level', 'levelDropdownBtn', 'All Levels');
 
     }
 
@@ -792,6 +803,7 @@
                     .getElementById('filtersForm')
                     .reset();
 
+                document.getElementById('regionDropdownBtn').textContent = 'All Regions';
                 document.getElementById('levelDropdownBtn').textContent = 'All Levels';
 
                 await loadWarehouses('');
@@ -821,8 +833,6 @@
             setupFilters();
 
             setupDropdowns();
-
-            setupLevelFilter();
 
             setupResetButton();
 

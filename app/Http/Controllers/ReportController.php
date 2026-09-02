@@ -203,8 +203,10 @@ class ReportController extends Controller
             'device_code' => $request->query('device_code'), 
             'device_name' => $request->query('device_name'),
 
-            'status' => $request->query('status'), 
-            'level' => $request->query('level'), 
+            'status' => $request->query('status'),
+            'level' => $request->query('level'),
+
+            'current_only' => $request->boolean('current_only'),
 
             'report_type' => $reportType,
         ];
@@ -226,14 +228,14 @@ class ReportController extends Controller
 
         // Unified filters
         if (!empty($filters['region_code'])) {
-            $q->where('region_code', $filters['region_code']);
+            $q->whereIn('region_code', $this->splitMultiValue($filters['region_code']));
         }
         if (!empty($filters['region_name'])) {
             $q->where('region', $filters['region_name']);
         }
 
         if (!empty($filters['warehouse_code'])) {
-            $q->where('warehouse_code', $filters['warehouse_code']);
+            $q->whereIn('warehouse_code', $this->splitMultiValue($filters['warehouse_code']));
         }
         if (!empty($filters['warehouse_name'])) {
             $q->where('warehouse', $filters['warehouse_name']);
@@ -255,6 +257,10 @@ class ReportController extends Controller
         }
         if (!empty($filters['level'])) {
             $q->whereIn('level', $this->splitMultiValue($filters['level']));
+        }
+
+        if (!empty($filters['current_only'])) {
+            $q->whereIn('id', $this->latestDeviceReadingIds());
         }
 
         // Report type adjustments (filters only)

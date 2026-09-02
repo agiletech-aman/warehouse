@@ -97,8 +97,11 @@ class WarehouseController extends Controller
         }
 
         if ($regionCode) {
-            $query->whereHas('region', function ($q) use ($regionCode) {
-                $q->where('region_code', $regionCode);
+            $regionCodeValues = is_array($regionCode) ? $regionCode : explode(',', (string) $regionCode);
+            $regionCodes = array_values(array_filter(array_map('trim', $regionCodeValues), fn ($v) => $v !== ''));
+
+            $query->whereHas('region', function ($q) use ($regionCodes) {
+                $q->whereIn('region_code', $regionCodes);
             });
         }
 

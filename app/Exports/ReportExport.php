@@ -227,14 +227,14 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
         }
 
         if (!empty($this->filters['region_code'])) {
-            $q->where('region_code', $this->filters['region_code']);
+            $q->whereIn('region_code', $this->splitMultiValue($this->filters['region_code']));
         }
         if (!empty($this->filters['region_name'])) {
             $q->where('region', $this->filters['region_name']);
         }
 
         if (!empty($this->filters['warehouse_code'])) {
-            $q->where('warehouse_code', $this->filters['warehouse_code']);
+            $q->whereIn('warehouse_code', $this->splitMultiValue($this->filters['warehouse_code']));
         }
         if (!empty($this->filters['warehouse_name'])) {
             $q->where('warehouse', $this->filters['warehouse_name']);
@@ -257,14 +257,11 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
         }
 
         if (!empty($this->filters['level'])) {
-            $levels = is_array($this->filters['level'])
-                ? $this->filters['level']
-                : explode(',', (string) $this->filters['level']);
-            $levels = array_values(array_filter(array_map('trim', $levels), fn ($v) => $v !== ''));
+            $q->whereIn('level', $this->splitMultiValue($this->filters['level']));
+        }
 
-            if ($levels) {
-                $q->whereIn('level', $levels);
-            }
+        if (!empty($this->filters['current_only'])) {
+            $q->whereIn('id', Reading::latestIdsPerSensor());
         }
 
         // Report type adjustments: filter only; keep unified structure.
@@ -298,6 +295,16 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
                 'level',
                 'status',
             ]);
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function splitMultiValue($value): array
+    {
+        $values = is_array($value) ? $value : explode(',', (string) $value);
+
+        return array_values(array_filter(array_map('trim', $values), fn ($v) => $v !== ''));
     }
 
     private function alertReadingIds(?string $type = null)
