@@ -134,8 +134,9 @@ class FnsDetectionController extends Controller
             ],
         ]);
 
-        // Convert the incoming image (upload or Base64) into a Base64 data URI stored directly in the DB.
-        $snapshotBase64 = $this->resolveSnapshotBase64($request, $validated);
+        // Priority: multipart upload, Base64 snapshot, then the legacy path field.
+        $snapshotPath = $this->storeSnapshot($request, $validated)
+            ?? ($validated['snapshot_path'] ?? null);
 
         $detection = FnsDetection::create([
             'id' => (string) Str::uuid(),
@@ -146,7 +147,7 @@ class FnsDetectionController extends Controller
             'compartment' => $validated['compartment'] ?? null,
             'detection_type' => $validated['detection_type'],
             'confidence' => $validated['confidence'],
-            'snapshot_base64' => $snapshotBase64,
+            'snapshot_path' => $snapshotPath,
             'bounding_box' => $validated['bounding_box'] ?? null,
             'detected_at' => $validated['detected_at'] ?? now(),
         ]);
@@ -200,55 +201,6 @@ class FnsDetectionController extends Controller
         }
 
         return $snapshotPath;
-    }
-
-    /**
-     * Normalize an uploaded image or a Base64 image into a storable Base64 data URI.
-     *
-     * @param  array<string, mixed>  $validated
-     */
-    private function resolveSnapshotBase64(Request $request, array $validated): ?string
-    {
-        if ($request->hasFile('snapshot')) {
-            $request->validate([
-                'snapshot' => ['required', 'image', 'max:5120'], // 5 MB
-            ]);
-
-            $file = $request->file('snapshot');
-            $contents = file_get_contents($file->getRealPath());
-
-            if ($contents === false) {
-                throw new \RuntimeException('The snapshot image could not be read.');
-            }
-
-            $mimeType = $file->getMimeType() ?: 'image/jpeg';
-
-            return 'data:' . $mimeType . ';base64,' . base64_encode($contents);
-        }
-
-        $base64Snapshot = $validated['snapshot_base64']
-            ?? ($validated['snapshot'] ?? null);
-
-        if ($base64Snapshot === null || $base64Snapshot === '') {
-            return null;
-        }
-
-        if (! is_string($base64Snapshot)) {
-            throw ValidationException::withMessages([
-                'snapshot' => 'The snapshot must be an image file or a Base64-encoded image.',
-            ]);
-        }
-
-        [$contents, $extension] = $this->decodeBase64Image($base64Snapshot);
-
-        $mimeTypes = [
-            'jpg' => 'image/jpeg',
-            'png' => 'image/png',
-            'gif' => 'image/gif',
-            'webp' => 'image/webp',
-        ];
-
-        return 'data:' . ($mimeTypes[$extension] ?? 'image/jpeg') . ';base64,' . base64_encode($contents);
     }
 
      public function index02(Request $request): JsonResponse
@@ -516,8 +468,9 @@ class FnsDetectionController extends Controller
         ],
     ]);
 
-    // Convert the incoming image (upload or Base64) into a Base64 data URI stored directly in the DB.
-    $snapshotBase64 = $this->resolveSnapshotBase64($request, $validated);
+    // Priority: multipart upload, Base64 snapshot, then the legacy path field.
+    $snapshotPath = $this->storeSnapshot($request, $validated)
+        ?? ($validated['snapshot_path'] ?? null);
 
     $detection = FnsDetection02::create([
         'id' => (string) Str::uuid(),
@@ -528,7 +481,7 @@ class FnsDetectionController extends Controller
         'compartment' => $validated['compartment'] ?? null,
         'detection_type' => $validated['detection_type'],
         'confidence' => $validated['confidence'],
-        'snapshot_base64' => $snapshotBase64,
+        'snapshot_path' => $snapshotPath,
         'bounding_box' => $validated['bounding_box'] ?? null,
         'detected_at' => $validated['detected_at'] ?? now(),
     ]);

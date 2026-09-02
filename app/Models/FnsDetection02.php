@@ -27,7 +27,6 @@ class FnsDetection02 extends Model
         'detection_type',
         'confidence',
         'snapshot_path',
-        'snapshot_base64',
         'bounding_box',
         'detected_at',
     ];

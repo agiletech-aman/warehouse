@@ -50,7 +50,8 @@ class FnsDetectionController extends Controller
                 'location' => $this->joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
-                'snapshot_base64' => $detection->snapshot_base64,
+                'snapshot_path' => $detection->snapshot_path ?: '-',
+                'snapshot_url' => $detection->snapshot_url,
                 'bounding_box' => $detection->bounding_box ?: '-',
                 'detected_at' => $detection->detected_at?->format('d M Y H:i:s') ?: '-',
             ]);
@@ -93,7 +94,8 @@ class FnsDetectionController extends Controller
                 'location' => $this->joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
-                'snapshot_base64' => $detection->snapshot_base64,
+                'snapshot_path' => $detection->snapshot_path ?: '-',
+                'snapshot_url' => $detection->snapshot_url,
                 'bounding_box' => $detection->bounding_box ?: '-',
                 'detected_at' => $detection->detected_at?->format('d M Y H:i:s') ?: '-',
             ]);
