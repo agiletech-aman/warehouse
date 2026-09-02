@@ -7,6 +7,7 @@ use App\Models\FnsDetection;
 use App\Models\FnsDetection02;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -117,6 +118,11 @@ class FnsDetectionController extends Controller
                 'nullable',
                 'string',
             ],
+            'snapshot_path' => [
+                'nullable',
+                'string',
+                'max:500',
+            ],
             'bounding_box' => [
                 'nullable',
                 'string',
@@ -150,6 +156,50 @@ class FnsDetectionController extends Controller
             'message' => 'Detection saved successfully.',
             'data' => $detection,
         ], 201);
+    }
+
+    /**
+     * Store an uploaded image or a Base64 image on the public disk.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function storeSnapshot(Request $request, array $validated): ?string
+    {
+        if ($request->hasFile('snapshot')) {
+            $request->validate([
+                'snapshot' => ['required', 'image', 'max:5120'], // 5 MB
+            ]);
+
+            $snapshotPath = $request->file('snapshot')->storePublicly('snapshots', 'public');
+
+            if ($snapshotPath === false) {
+                throw new \RuntimeException('The snapshot image could not be stored.');
+            }
+
+            return $snapshotPath;
+        }
+
+        $base64Snapshot = $validated['snapshot_base64']
+            ?? ($validated['snapshot'] ?? null);
+
+        if ($base64Snapshot === null || $base64Snapshot === '') {
+            return null;
+        }
+
+        if (! is_string($base64Snapshot)) {
+            throw ValidationException::withMessages([
+                'snapshot' => 'The snapshot must be an image file or a Base64-encoded image.',
+            ]);
+        }
+
+        [$contents, $extension] = $this->decodeBase64Image($base64Snapshot);
+        $snapshotPath = 'snapshots/' . Str::uuid() . '.' . $extension;
+
+        if (! Storage::disk('public')->put($snapshotPath, $contents, ['visibility' => 'public'])) {
+            throw new \RuntimeException('The snapshot image could not be stored.');
+        }
+
+        return $snapshotPath;
     }
 
     /**
@@ -449,6 +499,11 @@ class FnsDetectionController extends Controller
         'snapshot_base64' => [
             'nullable',
             'string',
+        ],
+        'snapshot_path' => [
+            'nullable',
+            'string',
+            'max:500',
         ],
         'bounding_box' => [
             'nullable',
