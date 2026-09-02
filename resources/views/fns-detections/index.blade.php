@@ -45,26 +45,20 @@
                 return '-';
             }
 
-            const snapshotUrl = String(value);
+            const dataUri = String(value);
 
-            try {
-                const parsedUrl = new URL(snapshotUrl, window.location.origin);
-
-                if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-                    return '-';
-                }
-            } catch (error) {
+            if (!/^data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(dataUri)) {
                 return '-';
             }
 
             if (type !== 'display') {
-                return snapshotUrl;
+                return dataUri;
             }
 
-            const escapedUrl = escapeText(snapshotUrl);
+            const escapedUri = escapeText(dataUri);
 
-            return '<a href="' + escapedUrl + '" target="_blank" rel="noopener noreferrer">'
-                + '<img src="' + escapedUrl + '" alt="Detection snapshot" class="img-thumbnail" '
+            return '<a href="' + escapedUri + '" target="_blank" rel="noopener noreferrer">'
+                + '<img src="' + escapedUri + '" alt="Detection snapshot" class="img-thumbnail" '
                 + 'style="width: 100px; height: 70px; object-fit: cover;">'
                 + '</a>';
         };
@@ -107,7 +101,7 @@
                     }
                 },
                 {
-                    data: 'snapshot_url',
+                    data: 'snapshot_base64',
                     orderable: false,
                     searchable: false,
                     render: renderSnapshot
