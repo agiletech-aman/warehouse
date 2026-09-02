@@ -55,11 +55,11 @@ class FnsDetection extends Model
 
         $snapshotPath = ltrim($snapshotPath, '/');
 
-    if (Str::startsWith($snapshotPath, 'storage/')) {
-        $snapshotPath = Str::after($snapshotPath, 'storage/');
-    }
+        if (Str::startsWith($snapshotPath, 'storage/')) {
+            $snapshotPath = Str::after($snapshotPath, 'storage/');
+        }
 
-    return Storage::url($snapshotPath);
+        return Storage::url($snapshotPath);
     }
 
     public function scopeFilter(Builder $query, array $filters): Builder

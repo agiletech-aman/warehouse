@@ -203,6 +203,59 @@ class FnsDetectionController extends Controller
         return $snapshotPath;
     }
 
+     public function index02(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'camera_ip' => ['nullable', 'string', 'max:45'],
+            'camera_name' => ['nullable', 'string', 'max:255'],
+            'warehouse_code' => ['nullable', 'string', 'max:100'],
+            'godown' => ['nullable', 'string', 'max:255'],
+            'compartment' => ['nullable', 'string', 'max:255'],
+            'detection_type' => [
+                'nullable',
+                Rule::in(['person', 'fire', 'smoke', 'weapon', 'intrusion']),
+            ],
+            'min_confidence' => ['nullable', 'numeric', 'between:0,1'],
+            'max_confidence' => [
+                'nullable',
+                'numeric',
+                'between:0,1',
+                Rule::when($request->filled('min_confidence'), ['gte:min_confidence']),
+            ],
+            'from_date' => ['nullable', 'date'],
+            'to_date' => [
+                'nullable',
+                'date',
+                Rule::when($request->filled('from_date'), ['after_or_equal:from_date']),
+            ],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 15);
+        $detections = FnsDetection02::query()
+            ->filter($validated)
+            ->latest('detected_at')
+            ->latest('id')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Detections fetched successfully.',
+            'data' => $detections->items(),
+            'pagination' => [
+                'current_page' => $detections->currentPage(),
+                'per_page' => $detections->perPage(),
+                'total' => $detections->total(),
+                'last_page' => $detections->lastPage(),
+                'from' => $detections->firstItem(),
+                'to' => $detections->lastItem(),
+            ],
+        ]);
+    }
+
     /**
      * @return array{0: string, 1: string}
      */
@@ -342,7 +395,7 @@ class FnsDetectionController extends Controller
     public function store02(Request $request): JsonResponse
 {
     // Static Secret Key
-    $secretKey = 'FIRESMOKE2026';
+    $secretKey = 'FIRESMOKe2026';
 
     if ($request->header('X-Push-Secret') !== $secretKey) {
         return response()->json([

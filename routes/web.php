@@ -49,6 +49,8 @@ Route::get('/alerts/data', [AlertController::class, 'data'])->name('alerts.data'
 Route::resource('alerts', AlertController::class);
 Route::get('/fns/detections/data', [FnsDetectionController::class, 'data'])->name('fns-detections.data');
 Route::get('/fns/detections', [FnsDetectionController::class, 'index'])->name('fns-detections.index');
+Route::get('/fns/detections02/data', [FnsDetectionController::class, 'data02'])->name('fns-detections02.data');
+Route::get('/fns/detections02', [FnsDetectionController::class, 'index02'])->name('fns-detections02.index');
 
 // Reports
 
