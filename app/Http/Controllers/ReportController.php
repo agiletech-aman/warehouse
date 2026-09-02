@@ -254,7 +254,7 @@ class ReportController extends Controller
             $q->where('status', $filters['status']);
         }
         if (!empty($filters['level'])) {
-            $q->where('level', $filters['level']);
+            $q->whereIn('level', $this->splitMultiValue($filters['level']));
         }
 
         // Report type adjustments (filters only)
@@ -283,6 +283,16 @@ class ReportController extends Controller
         }
 
         return $q;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function splitMultiValue($value): array
+    {
+        $values = is_array($value) ? $value : explode(',', (string) $value);
+
+        return array_values(array_filter(array_map('trim', $values), fn ($v) => $v !== ''));
     }
 
     private function applyDataTableSearch($query, Request $request): void

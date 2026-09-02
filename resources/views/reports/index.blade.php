@@ -151,19 +151,43 @@
 
                     <div class="col-lg-2">
                         <label class="form-label fw-semibold">
-                            Device
+                            Level
                         </label>
 
-                        <select
-                            id="device_code"
-                            name="device_code"
-                            class="form-select">
+                        <div class="dropdown">
+                            <button
+                                type="button"
+                                id="levelDropdownBtn"
+                                class="form-select text-start"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                aria-expanded="false">
+                                All Levels
+                            </button>
 
-                            <option value="">
-                                All Devices
-                            </option>
+                            <ul class="dropdown-menu p-2 w-100" aria-labelledby="levelDropdownBtn">
+                                <li>
+                                    <div class="form-check">
+                                        <input class="form-check-input level-option" type="checkbox" value="normal" id="level_normal">
+                                        <label class="form-check-label" for="level_normal">Normal</label>
+                                    </div>
+                                </li>
+                                <li>
+                                    <div class="form-check">
+                                        <input class="form-check-input level-option" type="checkbox" value="severe" id="level_severe">
+                                        <label class="form-check-label" for="level_severe">Severe</label>
+                                    </div>
+                                </li>
+                                <li>
+                                    <div class="form-check">
+                                        <input class="form-check-input level-option" type="checkbox" value="critical" id="level_critical">
+                                        <label class="form-check-label" for="level_critical">Critical</label>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
 
-                        </select>
+                        <input type="hidden" id="level" name="level" value="">
                     </div>
 
                 </div>
@@ -367,7 +391,6 @@
     const API = {
         regions: '{{ url("/api/regions") }}',
         warehouses: '{{ url("/api/warehouses") }}',
-        devices: '{{ url("/api/devices") }}',
     };
 
     const routeExportPdf = '{{ route("reports.export",["format"=>"pdf"]) }}';
@@ -486,45 +509,6 @@
                 `<option value="${w.warehouse_code}">
                 ${w.warehouse_name}
              </option>`;
-        });
-
-        select.disabled = false;
-    }
-
-
-    /* ---------------- DEVICES ---------------- */
-
-    async function loadDevices(warehouseCode) {
-
-        const select =
-            document.getElementById('device_code');
-
-        select.disabled = true;
-
-        select.innerHTML =
-            '<option>Loading...</option>';
-
-        const response = await fetch(
-            API.devices +
-            '?per_page=1000&warehouse_code=' +
-            encodeURIComponent(warehouseCode || '')
-        );
-
-        const json = await response.json();
-
-        select.innerHTML =
-            '<option value="">All Devices</option>';
-
-        (json.data?.data || json.data || []).forEach(device => {
-
-            let code =
-                device.device_code ||
-                device.ip_address;
-
-            select.innerHTML +=
-                `<option value="${code}">
-                ${device.device_name}
-            </option>`;
         });
 
         select.disabled = false;
@@ -734,7 +718,7 @@
 
         document
             .querySelectorAll(
-                '#filtersForm input,#filtersForm select'
+                '#filtersForm input:not(.level-option),#filtersForm select'
             )
             .forEach(el => {
 
@@ -744,6 +728,37 @@
                 );
 
             });
+    }
+
+
+    function setupLevelFilter() {
+
+        const checkboxes = document.querySelectorAll('.level-option');
+        const hiddenInput = document.getElementById('level');
+        const btn = document.getElementById('levelDropdownBtn');
+
+        const labels = {
+            normal: 'Normal',
+            severe: 'Severe',
+            critical: 'Critical'
+        };
+
+        function sync() {
+
+            const checked = Array.from(checkboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+
+            hiddenInput.value = checked.join(',');
+
+            btn.textContent = checked.length
+                ? checked.map(v => labels[v]).join(', ')
+                : 'All Levels';
+
+            hiddenInput.dispatchEvent(new Event('change'));
+        }
+
+        checkboxes.forEach(cb => cb.addEventListener('change', sync));
     }
 
 
@@ -758,23 +773,6 @@
                     let value = e.target.value;
 
                     await loadWarehouses(value);
-                    await loadDevices('');
-
-                    autoRefresh();
-
-                }
-            );
-
-
-        document
-            .getElementById('warehouse_code')
-            .addEventListener(
-                'change',
-                async e => {
-
-                    let value = e.target.value;
-
-                    await loadDevices(value);
 
                     autoRefresh();
 
@@ -794,8 +792,9 @@
                     .getElementById('filtersForm')
                     .reset();
 
+                document.getElementById('levelDropdownBtn').textContent = 'All Levels';
+
                 await loadWarehouses('');
-                await loadDevices('');
 
                 autoRefresh();
 
@@ -812,7 +811,6 @@
 
             await loadRegions();
             await loadWarehouses('');
-            await loadDevices('');
 
             initTable();
 
@@ -823,6 +821,8 @@
             setupFilters();
 
             setupDropdowns();
+
+            setupLevelFilter();
 
             setupResetButton();
 

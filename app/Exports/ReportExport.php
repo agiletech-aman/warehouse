@@ -257,7 +257,14 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
         }
 
         if (!empty($this->filters['level'])) {
-            $q->where('level', $this->filters['level']);
+            $levels = is_array($this->filters['level'])
+                ? $this->filters['level']
+                : explode(',', (string) $this->filters['level']);
+            $levels = array_values(array_filter(array_map('trim', $levels), fn ($v) => $v !== ''));
+
+            if ($levels) {
+                $q->whereIn('level', $levels);
+            }
         }
 
         // Report type adjustments: filter only; keep unified structure.
