@@ -105,7 +105,33 @@
                     </div>
 
 
-                    <div class="col-lg-3">
+                    <div class="col-lg-2">
+                        <label class="form-label fw-semibold">
+                            Type
+                        </label>
+
+                        <select
+                            id="device_type"
+                            name="device_type"
+                            class="form-select">
+
+                            <option value="">
+                                All Types
+                            </option>
+
+                            <option value="CO2">
+                                CO₂
+                            </option>
+
+                            <option value="PH3">
+                                PH₃
+                            </option>
+
+                        </select>
+                    </div>
+
+
+                    <div class="col-lg-2">
                         <label class="form-label fw-semibold">
                             Warehouse
                         </label>
@@ -113,18 +139,17 @@
                         <select
                             id="warehouse_code"
                             name="warehouse_code"
-                            class="form-select"
-                            disabled>
+                            class="form-select">
 
                             <option value="">
-                                Select Region First
+                                All Warehouses
                             </option>
 
                         </select>
                     </div>
 
 
-                    <div class="col-lg-3">
+                    <div class="col-lg-2">
                         <label class="form-label fw-semibold">
                             Device
                         </label>
@@ -132,11 +157,10 @@
                         <select
                             id="device_code"
                             name="device_code"
-                            class="form-select"
-                            disabled>
+                            class="form-select">
 
                             <option value="">
-                                Select Warehouse First
+                                All Devices
                             </option>
 
                         </select>
@@ -448,7 +472,7 @@
         const response = await fetch(
             API.warehouses +
             '?per_page=1000&region_code=' +
-            encodeURIComponent(regionCode)
+            encodeURIComponent(regionCode || '')
         );
 
         const json = await response.json();
@@ -483,7 +507,7 @@
         const response = await fetch(
             API.devices +
             '?per_page=1000&warehouse_code=' +
-            encodeURIComponent(warehouseCode)
+            encodeURIComponent(warehouseCode || '')
         );
 
         const json = await response.json();
@@ -733,9 +757,8 @@
 
                     let value = e.target.value;
 
-                    if (!value) return;
-
                     await loadWarehouses(value);
+                    await loadDevices('');
 
                     autoRefresh();
 
@@ -751,8 +774,6 @@
 
                     let value = e.target.value;
 
-                    if (!value) return;
-
                     await loadDevices(value);
 
                     autoRefresh();
@@ -767,11 +788,14 @@
 
         document
             .getElementById('btnReset')
-            .addEventListener('click', () => {
+            .addEventListener('click', async () => {
 
                 document
                     .getElementById('filtersForm')
                     .reset();
+
+                await loadWarehouses('');
+                await loadDevices('');
 
                 autoRefresh();
 
@@ -787,6 +811,8 @@
         async function() {
 
             await loadRegions();
+            await loadWarehouses('');
+            await loadDevices('');
 
             initTable();
 
