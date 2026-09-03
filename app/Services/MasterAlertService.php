@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Reading;
-use App\Models\DeviceLatestStatus;
 use App\Models\Region;
 use App\Models\Warehouse;
 use Carbon\Carbon;
@@ -22,13 +21,13 @@ class MasterAlertService
         $page = max(1, (int) ($filters['pageNumber'] ?? 1));
         $pageSize = max(1, min((int) ($filters['pageSize'] ?? 20), 500));
 
-        $warehouseName = $filters['warehouseName'] ?? null;
-        $warehouseCode = $filters['warehouseCode'] ?? null;
-
-        $query = DeviceLatestStatus::query()->monitoringGases();
+        $query = Reading::query()
+            ->whereIn('id', Reading::latestIdsPerSensor())
+            ->whereRaw('LOWER(device_type) IN (?, ?)', ['co2', 'ph3']);
 
         if (isset($filters['deviceTypeId'])) {
-            $query->deviceTypeId((int) $filters['deviceTypeId']);
+            $deviceType = (int) $filters['deviceTypeId'] === self::DEVICE_PH3 ? 'ph3' : 'co2';
+            $query->whereRaw('LOWER(device_type) = ?', [$deviceType]);
         }
 
         if (! empty($filters['warehouseName']) || ! empty($filters['warehouseCode'])) {
@@ -76,7 +75,7 @@ class MasterAlertService
                 'recorded_at',
             ]);
 
-        $data = $readings->map(function (DeviceLatestStatus $reading) {
+        $data = $readings->map(function (Reading $reading) {
             $location = collect([$reading->godown, $reading->compartment])
                 ->filter(fn ($part) => $part !== null && $part !== '')
                 ->implode(' / ');
