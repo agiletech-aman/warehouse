@@ -106,16 +106,6 @@ class MasterAlertSummaryService
             ->orderBy('warehouse')
             ->get();
 
-        $readingCounts = Reading::query();
-        $this->applyFilters($readingCounts, $filters);
-
-        $totalNormalReadings = (clone $readingCounts)->where(function (Builder $query) {
-            $query->where('level', 'normal')->orWhereNull('level')->orWhere('level', '');
-        })->count();
-        $totalSevereReadings = (clone $readingCounts)->where('level', 'severe')->count();
-        $totalCriticalReadings = (clone $readingCounts)->where('level', 'critical')->count();
-        $totalReadingCount = (clone $readingCounts)->count();
-
         $locationWise = [];
         foreach ($locationRows as $row) {
             $locationWise[$this->locationKey($row->warehouse, $row->region)] = [
@@ -140,10 +130,6 @@ class MasterAlertSummaryService
 
         return [
             'overall' => [
-                'totalReadingCount' => $totalReadingCount,
-                'totalNormalReadings' => $totalNormalReadings,
-                'totalSevereReadings' => $totalSevereReadings,
-                'totalCriticalReadings' => $totalCriticalReadings,
                 'totalIotDevices' => (int) ($overall->total_iot_devices ?? 0),
                 'totalSensorsCO2' => (int) ($overall->total_sensors_co2 ?? 0),
                 'totalSensorsPH3' => (int) ($overall->total_sensors_ph3 ?? 0),
