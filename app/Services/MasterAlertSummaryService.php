@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,8 +12,8 @@ class MasterAlertSummaryService
     public const DASHBOARD_CACHE_VERSION_KEY = 'device_latest_status.dashboard.version';
 
     /**
-     * The dashboard is a current-state view.  All counts are calculated in SQL
-     * against the one-row-per-sensor projection, never against reading history.
+     * The dashboard is a current-state view. Counts are calculated in SQL
+     * against each sensor's latest row in the readings table.
      */
     public function fetchDashboard(array $filters): array
     {
@@ -62,10 +61,13 @@ class MasterAlertSummaryService
 
     private function buildDashboard(array $filters): array
     {
-        $base = DeviceLatestStatus::query()->monitoringGases();
+        $gas = $this->gasSql();
+
+        $base = Reading::query()
+            ->whereIn('id', Reading::latestIdsPerSensor())
+            ->whereRaw("{$gas} IN (?, ?)", ['co2', 'ph3']);
         $this->applyFilters($base, $filters);
 
-        $gas = $this->gasSql();
         $status = "LOWER(COALESCE(status, ''))";
         $severity = "CASE WHEN LOWER(COALESCE(level, '')) IN ('severe', 'critical') THEN LOWER(level) ELSE 'normal' END";
 
