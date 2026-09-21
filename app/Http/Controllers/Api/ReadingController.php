@@ -301,6 +301,33 @@ class ReadingController extends Controller
                 'recorded_at' => $reading['recorded_at'] ?? now(),
             ];
 
+            // Critical/severe readings from the same IP flood the table when a
+            // device keeps reporting bad values back-to-back. Collapse those
+            // into one row per 5-minute window instead of inserting every hit.
+            if (in_array($storedLevel, ['critical', 'severe'], true) && !empty($row['device_ip'])) {
+                $existingReading = Reading::where('device_ip', $row['device_ip'])
+                    ->where('key', $row['key'])
+                    ->whereIn('level', ['critical', 'severe'])
+                    ->orderByDesc('id')
+                    ->first();
+
+                if ($existingReading
+                    && $existingReading->recorded_at
+                    && \Carbon\Carbon::parse($existingReading->recorded_at)->diffInMinutes(now()) < 5
+                ) {
+                    $existingReading->reading_value = $row['reading_value'];
+                    $existingReading->level = $storedLevel;
+                    $existingReading->status = $row['status'];
+                    $existingReading->recorded_at = $row['recorded_at'];
+                    $existingReading->save();
+
+                    $latestStatus->upsertFromReading($existingReading);
+                    $row['reading_id'] = $existingReading->id;
+                    $rows[] = $row;
+                    continue;
+                }
+            }
+
                         // Unknown-level readings: first one creates a row (so the sensor
             // has a history baseline); every unknown after that just touches
             // the timestamp on the last reading instead of creating a new row.
