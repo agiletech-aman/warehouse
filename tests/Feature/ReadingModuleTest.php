@@ -122,6 +122,62 @@ class ReadingModuleTest extends TestCase
         $this->assertSame(1, Alert::count());
     }
 
+    public function test_critical_readings_from_same_ip_collapse_into_one_row_within_five_minutes(): void
+    {
+        Mail::fake();
+
+        $payload = fn (string $level, float $value) => [
+            'key' => 'test-key',
+            'readings' => [[
+                'device_id' => 'CO2_192_168_1_50_1',
+                'device_name' => 'CO2 Sensor',
+                'device_type' => 'CO2',
+                'device_ip' => '192.168.1.50',
+                'unit' => 'ppm',
+                'value' => $value,
+                'level' => $level,
+                'status' => 'online',
+            ]],
+        ];
+
+        $this->postJson('/api/readings', $payload('critical', 90))->assertOk();
+        $this->postJson('/api/readings', $payload('severe', 70))->assertOk();
+        $this->postJson('/api/readings', $payload('critical', 95))->assertOk();
+
+        $this->assertSame(1, Reading::count());
+
+        $reading = Reading::first();
+        $this->assertSame('critical', $reading->level);
+        $this->assertEquals(95, (float) $reading->reading_value);
+    }
+
+    public function test_critical_readings_from_same_ip_after_five_minutes_create_a_new_row(): void
+    {
+        Mail::fake();
+
+        $payload = fn (float $value) => [
+            'key' => 'test-key',
+            'readings' => [[
+                'device_id' => 'CO2_192_168_1_51_1',
+                'device_name' => 'CO2 Sensor',
+                'device_type' => 'CO2',
+                'device_ip' => '192.168.1.51',
+                'unit' => 'ppm',
+                'value' => $value,
+                'level' => 'critical',
+                'status' => 'online',
+            ]],
+        ];
+
+        $this->postJson('/api/readings', $payload(90))->assertOk();
+
+        Reading::first()->update(['recorded_at' => now()->subMinutes(6)]);
+
+        $this->postJson('/api/readings', $payload(95))->assertOk();
+
+        $this->assertSame(2, Reading::count());
+    }
+
     public function test_sensor_reading_rejects_an_invalid_api_key(): void
     {
         $this->postJson('/api/readings', [
