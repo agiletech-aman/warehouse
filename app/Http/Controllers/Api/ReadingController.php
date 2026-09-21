@@ -312,6 +312,9 @@ class ReadingController extends Controller
 
                 if ($existingReading) {
                     $existingReading->recorded_at = $row['recorded_at'];
+                     $existingReading->status = 'offline';
+                    $existingReading->reading_value = null;
+                    $existingReading->level = 'unknown';
                     $existingReading->save();
 
                     $latestStatus->upsertFromReading($existingReading);
