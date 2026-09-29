@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\FnsDetection;
 use App\Models\FnsDetection02;
+use App\Support\FnsDetectionLocation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -137,14 +138,15 @@ class FnsDetectionController extends Controller
         // Priority: multipart upload, Base64 snapshot, then the legacy path field.
         $snapshotPath = $this->storeSnapshot($request, $validated)
             ?? ($validated['snapshot_path'] ?? null);
+        $location = FnsDetectionLocation::fromCameraName($validated['camera_name']);
 
         $detection = FnsDetection::create([
             'id' => (string) Str::uuid(),
             'camera_ip' => $validated['camera_ip'],
             'camera_name' => $validated['camera_name'],
             'warehouse_code' => $validated['warehouse_code'] ?? null,
-            'godown' => $validated['godown'] ?? null,
-            'compartment' => $validated['compartment'] ?? null,
+            'godown' => $location['godown'] ?? ($validated['godown'] ?? null),
+            'compartment' => $location['compartment'] ?? ($validated['compartment'] ?? null),
             'detection_type' => $validated['detection_type'],
             'confidence' => $validated['confidence'],
             'snapshot_path' => $snapshotPath,
@@ -471,14 +473,15 @@ class FnsDetectionController extends Controller
     // Priority: multipart upload, Base64 snapshot, then the legacy path field.
     $snapshotPath = $this->storeSnapshot($request, $validated)
         ?? ($validated['snapshot_path'] ?? null);
+    $location = FnsDetectionLocation::fromCameraName($validated['camera_name']);
 
     $detection = FnsDetection02::create([
         'id' => (string) Str::uuid(),
         'camera_ip' => $validated['camera_ip'],
         'camera_name' => $validated['camera_name'],
         'warehouse_code' => $validated['warehouse_code'] ?? null,
-        'godown' => $validated['godown'] ?? null,
-        'compartment' => $validated['compartment'] ?? null,
+        'godown' => $location['godown'] ?? ($validated['godown'] ?? null),
+        'compartment' => $location['compartment'] ?? ($validated['compartment'] ?? null),
         'detection_type' => $validated['detection_type'],
         'confidence' => $validated['confidence'],
         'snapshot_path' => $snapshotPath,

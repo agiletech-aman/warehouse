@@ -28,21 +28,34 @@ class SyncFnsDetectionLocations extends Command
             DB::table($table)
                 ->select(['id', 'camera_name', 'godown', 'compartment'])
                 ->whereNotNull('camera_name')
-                ->where('camera_name', 'like', 'G%')
+                ->where(function ($query): void {
+                    $query->where('camera_name', 'like', 'G%')
+                        ->orWhere('camera_name', 'like', 'Godown%');
+                })
                 ->chunkById(500, function ($detections) use ($table, $dryRun, &$updatedInTable): void {
                     $groups = [];
 
                     foreach ($detections as $detection) {
                         $location = FnsDetectionLocation::fromCameraName($detection->camera_name);
 
-                        if (! $location
-                            || ($detection->godown === $location['godown']
-                                && $detection->compartment === $location['compartment'])) {
+                        if (! $location) {
                             continue;
                         }
 
-                        $key = $location['godown'] . "\0" . $location['compartment'];
-                        $groups[$key]['location'] = $location;
+                        $fieldsToUpdate = ['godown' => $location['godown']];
+
+                        if ($location['compartment'] !== null) {
+                            $fieldsToUpdate['compartment'] = $location['compartment'];
+                        }
+
+                        if ($detection->godown === $fieldsToUpdate['godown']
+                            && (! isset($fieldsToUpdate['compartment'])
+                                || $detection->compartment === $fieldsToUpdate['compartment'])) {
+                            continue;
+                        }
+
+                        $key = implode("\0", $fieldsToUpdate);
+                        $groups[$key]['location'] = $fieldsToUpdate;
                         $groups[$key]['ids'][] = $detection->id;
                     }
 
