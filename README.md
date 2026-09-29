@@ -346,6 +346,9 @@ Special report_type cases:
    - `/admin/dashboard`
    - `/admin/reports`
    - `/admin/settings`
+6. Enable Laravel's scheduler on the server (replace the project path with the deployment directory):
+   - `* * * * * cd /path/to/Warehouse && php artisan schedule:run >> /dev/null 2>&1`
+   - FNS godown/compartment values are synced from camera names every five minutes.
 
 ---
 
@@ -361,4 +364,3 @@ Special report_type cases:
 - **CRUD Modules**: `regions`, `warehouses`, `devices`, `readings`, `alerts` resource controllers
 - **Hierarchy**: `/hierarchy` route closure + hierarchy view
 - **Reports**: `ReportController@index/data/summary/export` + `reports/index.blade.php`
-

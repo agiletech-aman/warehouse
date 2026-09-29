@@ -51,7 +51,7 @@ class FnsDetectionController extends Controller
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
                 'warehouse_name' => $warehouseNames->get($detection->warehouse_code) ?: ($detection->warehouse_code ?: '-'),
-                'location' => $this->formatLocation($detection->godown, $detection->compartment, $detection->camera_name),
+                'location' => $this->joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
                 'snapshot_path' => $detection->snapshot_path ?: '-',
@@ -98,7 +98,7 @@ class FnsDetectionController extends Controller
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
                 'warehouse_name' => $warehouseNames->get($detection->warehouse_code) ?: ($detection->warehouse_code ?: '-'),
-                'location' => $this->formatLocation($detection->godown, $detection->compartment, $detection->camera_name),
+                'location' => $this->joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
                 'snapshot_path' => $detection->snapshot_path ?: '-',
@@ -124,27 +124,10 @@ class FnsDetectionController extends Controller
             : Warehouse::query()->whereIn('warehouse_code', $codes)->pluck('warehouse_name', 'warehouse_code');
     }
 
-    private function formatLocation(?string $godown, ?string $compartment, ?string $cameraName): string
+    private function joinParts(?string $godown, ?string $compartment): string
     {
         $godown = trim((string) $godown);
         $compartment = trim((string) $compartment);
-
-        // The camera name prefix is the source of truth when it contains a location code.
-        if (preg_match('/(?:^|\s)G(\d+)C([A-Z0-9]+)(?=\s|$)/i', (string) $cameraName, $matches)) {
-            $godown = 'G' . $matches[1];
-            $compartment = 'C' . $matches[2];
-        } elseif (preg_match('/^G(\d+)C([A-Z0-9]+)$/i', $godown, $matches)) {
-            $godown = 'G' . $matches[1];
-            $compartment = $compartment !== '' ? $compartment : 'C' . $matches[2];
-        }
-
-        if (preg_match('/^G(\d+)$/i', $godown, $matches)) {
-            $godown = 'Godown_' . $matches[1];
-        }
-
-        if (preg_match('/^C([A-Z0-9]+)$/i', $compartment, $matches)) {
-            $compartment = 'Compartment_' . $matches[1];
-        }
 
         $parts = array_values(array_filter([$godown, $compartment], fn (string $part) => $part !== ''));
 
