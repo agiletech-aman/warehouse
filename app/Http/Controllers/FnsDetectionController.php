@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FnsDetection;
 use App\Models\FnsDetection02;
+use App\Models\Warehouse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -41,13 +42,16 @@ class FnsDetectionController extends Controller
             ->latest('id')
             ->offset($start)
             ->limit($length)
-            ->get()
-            ->map(fn (FnsDetection $detection) => [
+            ->get();
+        $warehouseNames = $this->warehouseNamesFor($detections->pluck('warehouse_code'));
+
+        $detections = $detections->map(fn (FnsDetection $detection) => [
                 'id' => $detection->id,
                 'name' => $detection->camera_name ?: '-',
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
-                'location' => $this->joinParts($detection->godown, $detection->compartment),
+                'warehouse_name' => $warehouseNames->get($detection->warehouse_code) ?: ($detection->warehouse_code ?: '-'),
+                'location' => $this->formatLocation($detection->godown, $detection->compartment, $detection->camera_name),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
                 'snapshot_path' => $detection->snapshot_path ?: '-',
@@ -85,13 +89,16 @@ class FnsDetectionController extends Controller
             ->latest('id')
             ->offset($start)
             ->limit($length)
-            ->get()
-            ->map(fn (FnsDetection02 $detection) => [
+            ->get();
+        $warehouseNames = $this->warehouseNamesFor($detections->pluck('warehouse_code'));
+
+        $detections = $detections->map(fn (FnsDetection02 $detection) => [
                 'id' => $detection->id,
                 'name' => $detection->camera_name ?: '-',
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
-                'location' => $this->joinParts($detection->godown, $detection->compartment),
+                'warehouse_name' => $warehouseNames->get($detection->warehouse_code) ?: ($detection->warehouse_code ?: '-'),
+                'location' => $this->formatLocation($detection->godown, $detection->compartment, $detection->camera_name),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
                 'snapshot_path' => $detection->snapshot_path ?: '-',
@@ -108,12 +115,38 @@ class FnsDetectionController extends Controller
         ]);
     }
 
-    private function joinParts(?string $first, ?string $second): string
+    private function warehouseNamesFor($warehouseCodes)
     {
-        $parts = array_values(array_filter([
-            trim((string) $first),
-            trim((string) $second),
-        ], fn (string $part) => $part !== ''));
+        $codes = $warehouseCodes->filter(fn ($code) => filled($code))->unique()->values();
+
+        return $codes->isEmpty()
+            ? collect()
+            : Warehouse::query()->whereIn('warehouse_code', $codes)->pluck('warehouse_name', 'warehouse_code');
+    }
+
+    private function formatLocation(?string $godown, ?string $compartment, ?string $cameraName): string
+    {
+        $godown = trim((string) $godown);
+        $compartment = trim((string) $compartment);
+
+        // Some camera names carry the location as a prefix, for example G3CB CAM1.
+        if (preg_match('/^G(\d+)C([A-Z0-9]+)$/i', $godown, $matches)) {
+            $godown = 'G' . $matches[1];
+            $compartment = $compartment !== '' ? $compartment : 'C' . $matches[2];
+        } elseif (preg_match('/(?:^|\s)G(\d+)C([A-Z0-9]+)(?=\s|$)/i', (string) $cameraName, $matches)) {
+            $godown = $godown !== '' ? $godown : 'G' . $matches[1];
+            $compartment = $compartment !== '' ? $compartment : 'C' . $matches[2];
+        }
+
+        if (preg_match('/^G(\d+)$/i', $godown, $matches)) {
+            $godown = 'Godown_' . $matches[1];
+        }
+
+        if (preg_match('/^C([A-Z0-9]+)$/i', $compartment, $matches)) {
+            $compartment = 'Compartment_' . $matches[1];
+        }
+
+        $parts = array_values(array_filter([$godown, $compartment], fn (string $part) => $part !== ''));
 
         return $parts ? implode(' / ', $parts) : '-';
     }

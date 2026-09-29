@@ -30,6 +30,20 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="detectionSnapshotModal" tabindex="-1" aria-labelledby="detectionSnapshotModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content border-0 bg-dark">
+            <div class="modal-header border-0 text-white">
+                <h5 class="modal-title" id="detectionSnapshotModalLabel">Detection Snapshot</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center pt-0">
+                <img id="detectionSnapshotModalImage" src="" alt="Detection snapshot" class="img-fluid rounded" style="max-height: calc(100vh - 150px);">
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
 
 @section('scripts')
@@ -63,10 +77,11 @@
 
             const escapedUrl = escapeText(snapshotUrl);
 
-            return '<a href="' + escapedUrl + '" target="_blank" rel="noopener noreferrer">'
+            return '<button type="button" class="js-detection-snapshot border-0 bg-transparent p-0" '
+                + 'data-image-url="' + escapedUrl + '" aria-label="View detection snapshot">'
                 + '<img src="' + escapedUrl + '" alt="Detection snapshot" class="img-thumbnail" '
                 + 'style="width: 100px; height: 70px; object-fit: cover;">'
-                + '</a>';
+                + '</button>';
         };
 
         window.initWarehouseDataTable('#fnsDetectionsTable', {
@@ -85,7 +100,7 @@
             columns: [
                 { data: 'name', render: escapeText },
                 { data: 'camera_ip', render: escapeText },
-                { data: 'warehouse_code', render: escapeText },
+                { data: 'warehouse_name', render: escapeText },
                 { data: 'location', render: escapeText },
                 {
                     data: 'detection_type',
@@ -115,6 +130,16 @@
                 { data: 'bounding_box', render: escapeText },
                 { data: 'detected_at', render: escapeText }
             ]
+        });
+
+        $('#fnsDetectionsTable').on('click', '.js-detection-snapshot', function () {
+            const modalImage = document.getElementById('detectionSnapshotModalImage');
+            modalImage.src = this.getAttribute('data-image-url');
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('detectionSnapshotModal')).show();
+        });
+
+        document.getElementById('detectionSnapshotModal').addEventListener('hidden.bs.modal', function () {
+            document.getElementById('detectionSnapshotModalImage').src = '';
         });
 
     });
