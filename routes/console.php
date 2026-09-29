@@ -12,6 +12,10 @@ Artisan::command('inspire', function () {
 Schedule::command('devices:mark-stale-offline')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
+
+Schedule::command('fns-detections:sync-locations')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
 // routes/console.php
 
 Schedule::command('readings:delete-unknown')

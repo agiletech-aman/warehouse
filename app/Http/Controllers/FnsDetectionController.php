@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FnsDetection;
 use App\Models\FnsDetection02;
 use App\Models\Warehouse;
+use App\Support\FnsDetectionLocation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -130,9 +131,9 @@ class FnsDetectionController extends Controller
         $compartment = trim((string) $compartment);
 
         // The camera name prefix is the source of truth when it contains a location code.
-        if (preg_match('/(?:^|\s)G(\d+)C([A-Z0-9]+)(?=\s|$)/i', (string) $cameraName, $matches)) {
-            $godown = 'G' . $matches[1];
-            $compartment = 'C' . $matches[2];
+        if ($location = FnsDetectionLocation::fromCameraName($cameraName)) {
+            $godown = $location['godown'];
+            $compartment = $location['compartment'];
         } elseif (preg_match('/^G(\d+)C([A-Z0-9]+)$/i', $godown, $matches)) {
             $godown = 'G' . $matches[1];
             $compartment = $compartment !== '' ? $compartment : 'C' . $matches[2];
