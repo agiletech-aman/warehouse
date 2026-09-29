@@ -25,7 +25,7 @@ class FnsDetectionController extends Controller
             'compartment' => ['nullable', 'string', 'max:255'],
             'detection_type' => [
                 'nullable',
-                Rule::in(['person', 'fire', 'smoke', 'weapon', 'intrusion']),
+                Rule::in(['person', 'fire', 'smoke', 'weapon', 'intrusion', 'rodent']),
             ],
             'min_confidence' => ['nullable', 'numeric', 'between:0,1'],
             'max_confidence' => [
@@ -103,6 +103,7 @@ class FnsDetectionController extends Controller
                     'smoke',
                     'weapon',
                     'intrusion',
+                    'rodent',
                 ]),
             ],
             'confidence' => [
@@ -214,7 +215,7 @@ class FnsDetectionController extends Controller
             'compartment' => ['nullable', 'string', 'max:255'],
             'detection_type' => [
                 'nullable',
-                Rule::in(['person', 'fire', 'smoke', 'weapon', 'intrusion']),
+                Rule::in(['person', 'fire', 'smoke', 'weapon', 'intrusion', 'rodent']),
             ],
             'min_confidence' => ['nullable', 'numeric', 'between:0,1'],
             'max_confidence' => [
@@ -395,9 +396,9 @@ class FnsDetectionController extends Controller
     public function store02(Request $request): JsonResponse
 {
     // Static Secret Key
-    $secretKey = 'FIRESMOKe2026';
+    $secretKey = (string) config('fns.push_secret');
 
-    if ($request->header('X-Push-Secret') !== $secretKey) {
+    if ($secretKey === '' || ! hash_equals($secretKey, (string) $request->header('X-Push-Secret'))) {
         return response()->json([
             'success' => false,
             'message' => 'Invalid push secret',
@@ -438,6 +439,7 @@ class FnsDetectionController extends Controller
                 'smoke',
                 'weapon',
                 'intrusion',
+                'rodent',
             ]),
         ],
         'confidence' => [
