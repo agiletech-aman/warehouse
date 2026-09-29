@@ -129,12 +129,12 @@ class FnsDetectionController extends Controller
         $godown = trim((string) $godown);
         $compartment = trim((string) $compartment);
 
-        // Some camera names carry the location as a prefix, for example G3CB CAM1.
-        if (preg_match('/^G(\d+)C([A-Z0-9]+)$/i', $godown, $matches)) {
+        // The camera name prefix is the source of truth when it contains a location code.
+        if (preg_match('/(?:^|\s)G(\d+)C([A-Z0-9]+)(?=\s|$)/i', (string) $cameraName, $matches)) {
             $godown = 'G' . $matches[1];
-            $compartment = $compartment !== '' ? $compartment : 'C' . $matches[2];
-        } elseif (preg_match('/(?:^|\s)G(\d+)C([A-Z0-9]+)(?=\s|$)/i', (string) $cameraName, $matches)) {
-            $godown = $godown !== '' ? $godown : 'G' . $matches[1];
+            $compartment = 'C' . $matches[2];
+        } elseif (preg_match('/^G(\d+)C([A-Z0-9]+)$/i', $godown, $matches)) {
+            $godown = 'G' . $matches[1];
             $compartment = $compartment !== '' ? $compartment : 'C' . $matches[2];
         }
 
