@@ -50,7 +50,7 @@ class FnsDetectionController extends Controller
                 'name' => $detection->camera_name ?: '-',
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
-                'warehouse_name' => $warehouseNames->get($detection->warehouse_code) ?: ($detection->warehouse_code ?: '-'),
+                'warehouse_name' => $warehouseNames->get($detection->warehouse_code) ?: '-',
                 'location' => $this->joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
@@ -97,7 +97,7 @@ class FnsDetectionController extends Controller
                 'name' => $detection->camera_name ?: '-',
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
-                'warehouse_name' => $warehouseNames->get($detection->warehouse_code) ?: ($detection->warehouse_code ?: '-'),
+                'warehouse_name' => $warehouseNames->get($detection->warehouse_code) ?: '-',
                 'location' => $this->joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => round($detection->confidence * 100, 2),
@@ -121,7 +121,7 @@ class FnsDetectionController extends Controller
 
         return $codes->isEmpty()
             ? collect()
-            : Warehouse::query()->whereIn('warehouse_code', $codes)->pluck('warehouse_name', 'warehouse_code');
+            : Warehouse::withTrashed()->whereIn('warehouse_code', $codes)->pluck('warehouse_name', 'warehouse_code');
     }
 
     private function joinParts(?string $godown, ?string $compartment): string
