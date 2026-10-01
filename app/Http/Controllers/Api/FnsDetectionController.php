@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\FnsDetection;
 use App\Models\FnsDetection02;
 use App\Support\FnsDetectionLocation;
+use App\Support\FnsDetectionWarehouseLookup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -141,11 +143,13 @@ class FnsDetectionController extends Controller
             ?? ($validated['snapshot_path'] ?? null);
         $location = FnsDetectionLocation::fromCameraName($validated['camera_name']);
 
+        $warehouseCode = $validated['warehouse_code'] ?? $this->warehouseCodeForCameraIp($validated['camera_ip'], 'fns_detections');
+
         $detection = FnsDetection::create([
             'id' => (string) Str::uuid(),
             'camera_ip' => $validated['camera_ip'],
             'camera_name' => $validated['camera_name'],
-            'warehouse_code' => $validated['warehouse_code'] ?? null,
+            'warehouse_code' => $warehouseCode,
             'godown' => $location['godown'] ?? ($validated['godown'] ?? null),
             'compartment' => $location['compartment'] ?? ($validated['compartment'] ?? null),
             'detection_type' => $validated['detection_type'],
@@ -477,11 +481,13 @@ class FnsDetectionController extends Controller
         ?? ($validated['snapshot_path'] ?? null);
     $location = FnsDetectionLocation::fromCameraName($validated['camera_name']);
 
+    $warehouseCode = $validated['warehouse_code'] ?? $this->warehouseCodeForCameraIp($validated['camera_ip'], 'fns_detections_02');
+
     $detection = FnsDetection02::create([
         'id' => (string) Str::uuid(),
         'camera_ip' => $validated['camera_ip'],
         'camera_name' => $validated['camera_name'],
-        'warehouse_code' => $validated['warehouse_code'] ?? null,
+        'warehouse_code' => $warehouseCode,
         'godown' => $location['godown'] ?? ($validated['godown'] ?? null),
         'compartment' => $location['compartment'] ?? ($validated['compartment'] ?? null),
         'detection_type' => $validated['detection_type'],
@@ -496,5 +502,29 @@ class FnsDetectionController extends Controller
         'message' => 'Detection saved successfully.',
         'data' => $detection,
     ], 201);
+}
+
+private function warehouseCodeForCameraIp(string $cameraIp, string $table): ?string
+{
+    try {
+        $warehouseCode = FnsDetectionWarehouseLookup::forCameraIp($cameraIp);
+    } catch (\Throwable $exception) {
+        Log::warning('FNS detection warehouse lookup failed.', [
+            'table' => $table,
+            'camera_ip' => $cameraIp,
+            'error' => $exception->getMessage(),
+        ]);
+
+        return null;
+    }
+
+    if (! $warehouseCode) {
+        Log::warning('FNS detection warehouse could not be resolved from camera IP.', [
+            'table' => $table,
+            'camera_ip' => $cameraIp,
+        ]);
+    }
+
+    return $warehouseCode;
 }
 }
