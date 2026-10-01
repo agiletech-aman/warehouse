@@ -32,6 +32,21 @@ class FnsDetectionWarehouseLookup
                 ->value('warehouses.warehouse_code');
         }
 
+        // Reuse an established camera IP mapping from the original FNS feed too.
+        if (! $warehouseCode && Schema::hasTable('fns_detections')) {
+            $warehouseCode = DB::table('fns_detections')
+                ->where('camera_ip', $cameraIp)
+                ->whereNotNull('warehouse_code')
+                ->value('warehouse_code');
+        }
+
+        if (! $warehouseCode && Schema::hasTable('device_latest_status')) {
+            $warehouseCode = DB::table('device_latest_status')
+                ->where('device_ip', $cameraIp)
+                ->whereNotNull('warehouse_code')
+                ->value('warehouse_code');
+        }
+
         // Mohali camera addresses are allocated from this subnet. Resolve its code
         // from the warehouse master so deployments can use their configured code.
         if (! $warehouseCode && preg_match('/^192\.168\.127\.\d{1,3}$/', $cameraIp)) {
