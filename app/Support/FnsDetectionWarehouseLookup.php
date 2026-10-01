@@ -45,6 +45,20 @@ class FnsDetectionWarehouseLookup
                 ->where('device_ip', $cameraIp)
                 ->whereNotNull('warehouse_code')
                 ->value('warehouse_code');
+
+            if (! $warehouseCode) {
+                $subnet = implode('.', array_slice(explode('.', $cameraIp), 0, 3));
+                $subnetMapping = DB::table('device_latest_status')
+                    ->whereNotNull('device_ip')
+                    ->whereNotNull('warehouse_code')
+                    ->selectRaw("SUBSTRING_INDEX(device_ip, '.', 3) AS subnet, MIN(warehouse_code) AS warehouse_code")
+                    ->groupBy('subnet')
+                    ->havingRaw('COUNT(DISTINCT warehouse_code) = 1')
+                    ->having('subnet', '=', $subnet)
+                    ->first();
+
+                $warehouseCode = $subnetMapping?->warehouse_code;
+            }
         }
 
         // Mohali camera addresses are allocated from this subnet. Resolve its code

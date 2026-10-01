@@ -7,6 +7,7 @@ use App\Models\FnsDetection02;
 use App\Models\Warehouse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class FnsDetectionController extends Controller
@@ -51,7 +52,7 @@ class FnsDetectionController extends Controller
                 'name' => $detection->camera_name ?: '-',
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
-                'warehouse_name' => $warehouseNames->get($detection->warehouse_code)
+                'warehouse_name' => $warehouseNames->get($this->normalizeWarehouseCode($detection->warehouse_code))
                     ?: $warehouseNamesByCameraIp->get($detection->camera_ip)
                     ?: '-',
                 'location' => $this->joinParts($detection->godown, $detection->compartment),
@@ -101,7 +102,7 @@ class FnsDetectionController extends Controller
                 'name' => $detection->camera_name ?: '-',
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
-                'warehouse_name' => $warehouseNames->get($detection->warehouse_code)
+                'warehouse_name' => $warehouseNames->get($this->normalizeWarehouseCode($detection->warehouse_code))
                     ?: $warehouseNamesByCameraIp->get($detection->camera_ip)
                     ?: '-',
                 'location' => $this->joinParts($detection->godown, $detection->compartment),
@@ -127,21 +128,44 @@ class FnsDetectionController extends Controller
 
         return $codes->isEmpty()
             ? collect()
-            : Warehouse::withTrashed()->whereIn('warehouse_code', $codes)->pluck('warehouse_name', 'warehouse_code');
+            : Warehouse::withTrashed()
+                ->whereRaw("UPPER(REPLACE(TRIM(warehouse_code), '-', '')) IN (" . implode(',', array_fill(0, $codes->count(), '?')) . ')', $codes->map(fn ($code) => $this->normalizeWarehouseCode($code))->all())
+                ->get(['warehouse_code', 'warehouse_name'])
+                ->mapWithKeys(fn (Warehouse $warehouse) => [
+                    $this->normalizeWarehouseCode($warehouse->warehouse_code) => $warehouse->warehouse_name,
+                ]);
+    }
+
+    private function normalizeWarehouseCode(?string $warehouseCode): string
+    {
+        return strtoupper(str_replace('-', '', trim((string) $warehouseCode)));
     }
 
     private function warehouseNamesForCameraIps($cameraIps)
     {
         $ips = $cameraIps->filter(fn ($ip) => filled($ip))->unique()->values();
 
-        if ($ips->isEmpty() || ! \Illuminate\Support\Facades\Schema::hasTable('devices')) {
+        if ($ips->isEmpty()) {
             return collect();
         }
 
-        return Warehouse::withTrashed()
-            ->join('devices', 'devices.warehouse_id', '=', 'warehouses.id')
-            ->whereIn('devices.ip_address', $ips)
-            ->pluck('warehouses.warehouse_name', 'devices.ip_address');
+        $names = collect();
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('devices')) {
+            $names = Warehouse::withTrashed()
+                ->join('devices', 'devices.warehouse_id', '=', 'warehouses.id')
+                ->whereIn('devices.ip_address', $ips)
+                ->pluck('warehouses.warehouse_name', 'devices.ip_address');
+        }
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('device_latest_status')) {
+            $names = $names->union(DB::table('device_latest_status')
+                ->whereIn('device_ip', $ips)
+                ->whereNotNull('warehouse')
+                ->pluck('warehouse', 'device_ip'));
+        }
+
+        return $names;
     }
 
     private function joinParts(?string $godown, ?string $compartment): string
