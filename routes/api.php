@@ -16,6 +16,8 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/warehouse/login', [WarehouseController::class, 'login']);
 Route::post('/readings', [ReadingController::class, 'store']);
 Route::get('/fns/detections', [FnsDetectionController::class, 'index']);
+Route::get('/fns/detections/ai', [FnsDetectionController::class, 'aiList']);
+Route::get('/fns/detections02/ai', [FnsDetectionController::class, 'aiList02']);
 Route::post('/fns/detections', [FnsDetectionController::class, 'store']);
 Route::post('/fns/detections02', [FnsDetectionController::class, 'store02']);
 

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FnsDetection;
 use App\Models\FnsDetection02;
 use App\Support\FnsDetectionLocation;
+use App\Support\FnsDetectionRows;
 use App\Support\FnsDetectionWarehouseLookup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,6 +60,76 @@ class FnsDetectionController extends Controller
             'success' => true,
             'message' => 'Detections fetched successfully.',
             'data' => $detections->items(),
+            'pagination' => [
+                'current_page' => $detections->currentPage(),
+                'per_page' => $detections->perPage(),
+                'total' => $detections->total(),
+                'last_page' => $detections->lastPage(),
+                'from' => $detections->firstItem(),
+                'to' => $detections->lastItem(),
+            ],
+        ]);
+    }
+
+    /**
+     * Detection rows in the same format as the FNS index page, with the snapshot as Base64 for AI.
+     */
+    public function aiList(Request $request): JsonResponse
+    {
+        return $this->aiRows($request, FnsDetection::class);
+    }
+
+    public function aiList02(Request $request): JsonResponse
+    {
+        return $this->aiRows($request, FnsDetection02::class);
+    }
+
+    /**
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
+     */
+    private function aiRows(Request $request, string $model): JsonResponse
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'camera_ip' => ['nullable', 'string', 'max:45'],
+            'camera_name' => ['nullable', 'string', 'max:255'],
+            'warehouse_code' => ['nullable', 'string', 'max:100'],
+            'godown' => ['nullable', 'string', 'max:255'],
+            'compartment' => ['nullable', 'string', 'max:255'],
+            'detection_type' => [
+                'nullable',
+                Rule::in(['person', 'fire', 'smoke', 'weapon', 'intrusion', 'rodent']),
+            ],
+            'min_confidence' => ['nullable', 'numeric', 'between:0,1'],
+            'max_confidence' => [
+                'nullable',
+                'numeric',
+                'between:0,1',
+                Rule::when($request->filled('min_confidence'), ['gte:min_confidence']),
+            ],
+            'from_date' => ['nullable', 'date'],
+            'to_date' => [
+                'nullable',
+                'date',
+                Rule::when($request->filled('from_date'), ['after_or_equal:from_date']),
+            ],
+            'page' => ['nullable', 'integer', 'min:1'],
+            // Base64 images make each row large, so keep pages small.
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $perPage = (int) ($validated['per_page'] ?? 10);
+        $detections = $model::query()
+            ->filter($validated)
+            ->latest('detected_at')
+            ->latest('id')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Detections fetched successfully.',
+            'data' => FnsDetectionRows::format($detections->getCollection(), true),
             'pagination' => [
                 'current_page' => $detections->currentPage(),
                 'per_page' => $detections->perPage(),
