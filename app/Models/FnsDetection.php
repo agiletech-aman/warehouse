@@ -75,7 +75,13 @@ class FnsDetection extends Model
                     ->orWhere('compartment', 'like', "%{$search}%")
                     ->orWhere('detection_type', 'like', "%{$search}%")
                     ->orWhere('snapshot_path', 'like', "%{$search}%")
-                    ->orWhere('bounding_box', 'like', "%{$search}%");
+                    ->orWhere('bounding_box', 'like', "%{$search}%")
+                    ->orWhereExists(function ($warehouseQuery) use ($search) {
+                        $warehouseQuery->selectRaw('1')
+                            ->from('warehouses')
+                            ->whereRaw("UPPER(REPLACE(TRIM(warehouses.warehouse_code), '-', '')) = UPPER(REPLACE(TRIM(fns_detections.warehouse_code), '-', ''))")
+                            ->where('warehouses.warehouse_name', 'like', "%{$search}%");
+                    });
             });
         }
 
