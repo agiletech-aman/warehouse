@@ -22,8 +22,6 @@ class FnsDetectionHistory
 {
     private const PAGE_BATCH = 10;
 
-    private const MAX_PAGES = 1000;
-
     /**
      * Newest-first slice of local + external detections.
      *
@@ -129,7 +127,8 @@ class FnsDetectionHistory
 
         try {
             foreach ((array) config('fns.history.alert_types', ['fire']) as $alertType) {
-                for ($page = 1; $page <= self::MAX_PAGES; $page += self::PAGE_BATCH) {
+                // No page or date limit: keep reading until the API runs out of data.
+                for ($page = 1; ; $page += self::PAGE_BATCH) {
                     $pages = range($page, $page + self::PAGE_BATCH - 1);
 
                     $responses = Http::pool(fn (Pool $pool) => array_map(
