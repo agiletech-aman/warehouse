@@ -118,7 +118,7 @@
                 {
                     data: 'confidence',
                     render: function (value) {
-                        return escapeText(value) + '%';
+                        return (value === null || value === '-') ? '-' : escapeText(value) + '%';
                     }
                 },
                 {

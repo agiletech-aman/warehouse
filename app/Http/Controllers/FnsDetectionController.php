@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FnsDetection;
 use App\Models\FnsDetection02;
+use App\Support\FnsDetectionHistory;
 use App\Support\FnsDetectionRows;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,9 +45,23 @@ class FnsDetectionController extends Controller
             $length = 10;
         }
 
-        $query = $model::query()->filter([
+        $filters = [
             'search' => data_get($request->query('search', []), 'value', ''),
-        ]);
+        ];
+        $query = $model::query()->filter($filters);
+
+        if ($model === FnsDetection::class) {
+            // Older detections come from the external history API.
+            $slice = FnsDetectionHistory::slice($query, $filters, $start, $length);
+
+            return response()->json([
+                'draw' => $draw,
+                'recordsTotal' => $model::query()->count() + FnsDetectionHistory::externalTotal(),
+                'recordsFiltered' => $slice['total'],
+                'data' => FnsDetectionRows::format($slice['items']),
+            ]);
+        }
+
         $recordsTotal = $model::query()->count();
         $recordsFiltered = (clone $query)->count();
 

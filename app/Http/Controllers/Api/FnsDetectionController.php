@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\FnsDetection;
 use App\Models\FnsDetection02;
+use App\Support\FnsDetectionHistory;
 use App\Support\FnsDetectionLocation;
 use App\Support\FnsDetectionRows;
 use App\Support\FnsDetectionWarehouseLookup;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
@@ -49,12 +51,7 @@ class FnsDetectionController extends Controller
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 15);
-        $detections = FnsDetection::query()
-            ->filter($validated)
-            ->latest('detected_at')
-            ->latest('id')
-            ->paginate($perPage)
-            ->withQueryString();
+        $detections = $this->paginateWithHistory($request, FnsDetection::class, $validated, $perPage);
 
         return response()->json([
             'success' => true,
@@ -119,12 +116,7 @@ class FnsDetectionController extends Controller
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 10);
-        $detections = $model::query()
-            ->filter($validated)
-            ->latest('detected_at')
-            ->latest('id')
-            ->paginate($perPage)
-            ->withQueryString();
+        $detections = $this->paginateWithHistory($request, $model, $validated, $perPage);
 
         return response()->json([
             'success' => true,
@@ -139,6 +131,31 @@ class FnsDetectionController extends Controller
                 'to' => $detections->lastItem(),
             ],
         ]);
+    }
+
+    /**
+     * Paginate local detections; fns_detections also includes older alerts from the history API.
+     *
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
+     * @param  array<string, mixed>  $filters
+     */
+    private function paginateWithHistory(Request $request, string $model, array $filters, int $perPage): LengthAwarePaginator
+    {
+        if ($model !== FnsDetection::class) {
+            return $model::query()
+                ->filter($filters)
+                ->latest('detected_at')
+                ->latest('id')
+                ->paginate($perPage)
+                ->withQueryString();
+        }
+
+        $page = max((int) ($filters['page'] ?? 1), 1);
+        $slice = FnsDetectionHistory::slice(FnsDetection::query()->filter($filters), $filters, ($page - 1) * $perPage, $perPage);
+
+        return (new LengthAwarePaginator($slice['items'], $slice['total'], $perPage, $page, [
+            'path' => $request->url(),
+        ]))->withQueryString();
     }
 
     public function store(Request $request): JsonResponse

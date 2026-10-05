@@ -37,11 +37,12 @@ class FnsDetectionRows
                     ?: '-',
                 'location' => self::joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
-                'confidence' => round($detection->confidence * 100, 2),
+                'confidence' => $detection->confidence === null ? '-' : round($detection->confidence * 100, 2),
                 'snapshot_path' => $detection->snapshot_path ?: '-',
                 'snapshot_url' => $detection->snapshot_url,
                 'bounding_box' => $detection->bounding_box ?: '-',
                 'detected_at' => $detection->detected_at?->format('d M Y H:i:s') ?: '-',
+                'source' => $detection->getAttribute('source') ?? 'local',
             ];
 
             if ($withSnapshotBase64) {
