@@ -33,9 +33,7 @@ class FnsDetectionRows
                 'name' => $detection->camera_name ?: '-',
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
-                'warehouse_name' => $warehouseNames->get(self::normalizeWarehouseCode($detection->warehouse_code))
-                    ?: $warehouseNamesByCameraIp->get($detection->camera_ip)
-                    ?: '-',
+                'warehouse_name' => self::warehouseName($detection->warehouse_code, $detection->camera_ip, $warehouseNames, $warehouseNamesByCameraIp),
                 'location' => self::joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => $detection->confidence === null ? '-' : round($detection->confidence * 100, 2),
@@ -55,7 +53,7 @@ class FnsDetectionRows
     }
 
     /**
-     * Locations the detections come from, grouped by region, warehouse, godown and compartment.
+     * Locations the detections come from, grouped by the warehouse and godown / compartment shown on the index.
      *
      * @param  Collection<int, object|array>  $groups  Rows with camera_ip, camera_name, warehouse_code,
      *                                                 godown, compartment, total, last_detected_at, source.
@@ -71,7 +69,6 @@ class FnsDetectionRows
 
                 return [
                     'key' => $key,
-                    'region_name' => $first['region_name'],
                     'warehouse_name' => $first['warehouse_name'],
                     'location' => $first['location'],
                     'total' => (int) $rows->sum('total'),
@@ -83,7 +80,8 @@ class FnsDetectionRows
     }
 
     /**
-     * Add region, warehouse, location and the location key to each raw camera/location group.
+     * Add the warehouse name, location and location key to each raw camera/location group,
+     * resolved exactly like the rows on the index page.
      *
      * @param  Collection<int, object|array>  $groups
      * @return Collection<int, array<string, mixed>>
@@ -91,86 +89,23 @@ class FnsDetectionRows
     public static function resolveLocations(Collection $groups): Collection
     {
         $groups = $groups->map(fn ($group) => (array) $group);
-        $warehouses = self::warehouseRegionsFor($groups->pluck('warehouse_code'));
-        $warehousesByCameraIp = self::warehouseRegionsForCameraIps($groups->pluck('camera_ip'));
+        $warehouseNames = self::warehouseNamesFor($groups->pluck('warehouse_code'));
+        $warehouseNamesByCameraIp = self::warehouseNamesForCameraIps($groups->pluck('camera_ip'));
 
-        return $groups->map(function (array $group) use ($warehouses, $warehousesByCameraIp) {
-            $byCode = $warehouses->get(self::normalizeWarehouseCode($group['warehouse_code'] ?? null), []);
-            $byIp = $warehousesByCameraIp->get($group['camera_ip'] ?? null, []);
-
-            $group['warehouse_name'] = ($byCode['warehouse_name'] ?? null)
-                ?: ($byIp['warehouse_name'] ?? null)
-                ?: (filled($group['warehouse_code'] ?? null) ? $group['warehouse_code'] : 'Unknown');
-            $group['region_name'] = ($byCode['region_name'] ?? null) ?: ($byIp['region_name'] ?? null) ?: '-';
+        return $groups->map(function (array $group) use ($warehouseNames, $warehouseNamesByCameraIp) {
+            $group['warehouse_name'] = self::warehouseName($group['warehouse_code'] ?? null, $group['camera_ip'] ?? null, $warehouseNames, $warehouseNamesByCameraIp);
             $group['location'] = self::joinParts($group['godown'] ?? null, $group['compartment'] ?? null);
-            $group['key'] = sha1($group['region_name'] . '|' . $group['warehouse_name'] . '|' . $group['location']);
+            $group['key'] = sha1($group['warehouse_name'] . '|' . $group['location']);
 
             return $group;
         });
     }
 
-    /**
-     * Warehouse and region names keyed by normalized warehouse code.
-     *
-     * @return Collection<string, array{warehouse_name: ?string, region_name: ?string}>
-     */
-    private static function warehouseRegionsFor(Collection $warehouseCodes): Collection
+    private static function warehouseName(?string $warehouseCode, ?string $cameraIp, Collection $warehouseNames, Collection $warehouseNamesByCameraIp): string
     {
-        $codes = $warehouseCodes->filter(fn ($code) => filled($code))->unique()->values();
-
-        return $codes->isEmpty()
-            ? collect()
-            : Warehouse::withTrashed()
-                ->leftJoin('regions', 'regions.frs_id', '=', 'warehouses.region_frs_id')
-                ->whereRaw("UPPER(REPLACE(TRIM(warehouses.warehouse_code), '-', '')) IN (" . implode(',', array_fill(0, $codes->count(), '?')) . ')', $codes->map(fn ($code) => self::normalizeWarehouseCode($code))->all())
-                ->get(['warehouses.warehouse_code', 'warehouses.warehouse_name', 'regions.region_name'])
-                ->mapWithKeys(fn (Warehouse $warehouse) => [
-                    self::normalizeWarehouseCode($warehouse->warehouse_code) => [
-                        'warehouse_name' => $warehouse->warehouse_name,
-                        'region_name' => $warehouse->region_name,
-                    ],
-                ]);
-    }
-
-    /**
-     * Warehouse and region names keyed by camera IP.
-     *
-     * @return Collection<string, array{warehouse_name: ?string, region_name: ?string}>
-     */
-    private static function warehouseRegionsForCameraIps(Collection $cameraIps): Collection
-    {
-        $ips = $cameraIps->filter(fn ($ip) => filled($ip))->unique()->values();
-
-        if ($ips->isEmpty()) {
-            return collect();
-        }
-
-        $rows = collect();
-
-        if (Schema::hasTable('devices')) {
-            $rows = Warehouse::withTrashed()
-                ->join('devices', 'devices.warehouse_id', '=', 'warehouses.id')
-                ->leftJoin('regions', 'regions.frs_id', '=', 'warehouses.region_frs_id')
-                ->whereIn('devices.ip_address', $ips)
-                ->get(['devices.ip_address', 'warehouses.warehouse_name', 'regions.region_name'])
-                ->mapWithKeys(fn ($row) => [$row->ip_address => [
-                    'warehouse_name' => $row->warehouse_name,
-                    'region_name' => $row->region_name,
-                ]]);
-        }
-
-        if (Schema::hasTable('device_latest_status')) {
-            $rows = $rows->union(DB::table('device_latest_status')
-                ->whereIn('device_ip', $ips)
-                ->whereNotNull('warehouse')
-                ->get(['device_ip', 'warehouse', 'region'])
-                ->mapWithKeys(fn ($row) => [$row->device_ip => [
-                    'warehouse_name' => $row->warehouse,
-                    'region_name' => $row->region,
-                ]]));
-        }
-
-        return $rows;
+        return $warehouseNames->get(self::normalizeWarehouseCode($warehouseCode))
+            ?: $warehouseNamesByCameraIp->get($cameraIp)
+            ?: '-';
     }
 
     /**

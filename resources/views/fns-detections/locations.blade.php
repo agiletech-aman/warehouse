@@ -31,7 +31,6 @@
             <table id="fnsLocationsTable" class="table table-hover align-middle mb-0 w-100">
                 <thead>
                     <tr>
-                        <th>Region</th>
                         <th>Warehouse</th>
                         <th>Godown / Compartment</th>
                         <th>Detections</th>
@@ -60,7 +59,7 @@
             paging: true,
             info: true,
             pageLength: 25,
-            order: [[3, 'desc']],
+            order: [[2, 'desc']],
             language: {
                 search: 'Search locations:',
                 emptyTable: 'No detections yet.'
@@ -70,7 +69,6 @@
                 dataSrc: 'data'
             },
             columns: [
-                { data: 'region_name', render: escapeText },
                 { data: 'warehouse_name', render: escapeText },
                 { data: 'location', render: escapeText },
                 { data: 'total' },

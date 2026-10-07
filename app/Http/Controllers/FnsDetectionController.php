@@ -77,7 +77,7 @@ class FnsDetectionController extends Controller
     }
 
     /**
-     * Every location (region / warehouse / godown / compartment) that has sent detections.
+     * Every location (warehouse / godown / compartment) that has sent detections.
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model
      */
