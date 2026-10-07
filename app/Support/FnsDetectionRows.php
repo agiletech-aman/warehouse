@@ -75,7 +75,6 @@ class FnsDetectionRows
                     'warehouse_name' => $first['warehouse_name'],
                     'location' => $first['location'],
                     'total' => (int) $rows->sum('total'),
-                    'local_total' => (int) $rows->where('source', 'local')->sum('total'),
                     'last_detected_at' => $lastDetectedAt?->format('d M Y H:i:s') ?? '-',
                 ];
             })

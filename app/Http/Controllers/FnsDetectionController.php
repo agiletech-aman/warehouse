@@ -90,8 +90,7 @@ class FnsDetectionController extends Controller
         }
 
         $locations = FnsDetectionRows::locations($groups)->map(fn (array $location) => $location + [
-            // Only detections stored in our DB can be deleted; history API alerts are read-only.
-            'delete_url' => $location['local_total'] > 0 ? route($destroyRoute, ['location' => $location['key']]) : null,
+            'delete_url' => route($destroyRoute, ['location' => $location['key']]),
         ]);
 
         return response()->json([
@@ -101,19 +100,26 @@ class FnsDetectionController extends Controller
 
     /**
      * Delete every stored detection (and its snapshot file) for one location.
+     * History API alerts cannot be deleted at the source, so that location is hidden instead.
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model
      */
     private function deleteLocation(string $model, string $location): RedirectResponse
     {
-        $groups = FnsDetectionRows::resolveLocations($this->localLocationGroups($model))
-            ->where('key', $location);
+        $external = $model === FnsDetection::class
+            ? FnsDetectionHistory::externalLocationGroups()
+            : collect();
 
-        if ($groups->isEmpty()) {
-            return redirect()->back()->with('error', 'Location not found or it has no stored detections.');
+        $resolved = FnsDetectionRows::resolveLocations($this->localLocationGroups($model)->concat($external))
+            ->where('key', $location);
+        $groups = $resolved->where('source', 'local');
+        $externalGroups = $resolved->where('source', 'external');
+
+        if ($resolved->isEmpty()) {
+            return redirect()->back()->with('error', 'Location not found.');
         }
 
-        [$deleted, $snapshots] = DB::transaction(function () use ($model, $groups) {
+        [$deleted, $snapshots] = $groups->isEmpty() ? [0, collect()] : DB::transaction(function () use ($model, $groups) {
             $query = $model::query()->where(function (Builder $query) use ($groups) {
                 foreach ($groups as $group) {
                     $query->orWhere(function (Builder $query) use ($group) {
@@ -133,7 +139,12 @@ class FnsDetectionController extends Controller
 
         $this->deleteSnapshots($snapshots);
 
-        $first = $groups->first();
+        if ($externalGroups->isNotEmpty()) {
+            FnsDetectionHistory::hideLocations($externalGroups);
+            $deleted += (int) $externalGroups->sum('total');
+        }
+
+        $first = $resolved->first();
 
         return redirect()->back()->with('success', $deleted . ' detection(s) deleted for '
             . $first['warehouse_name'] . ' (' . $first['location'] . ').');

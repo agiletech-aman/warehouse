@@ -88,7 +88,7 @@
 
                         return '<form action="' + escapeText(value) + '" method="POST" class="d-inline" data-confirm-delete'
                             + ' data-confirm-title="Delete location?" data-confirm-message="This will permanently delete all '
-                            + escapeText(row.local_total) + ' stored detection(s) for ' + escapeText(label) + '.">'
+                            + escapeText(row.total) + ' detection(s) for ' + escapeText(label) + '.">'
                             + '<input type="hidden" name="_token" value="' + escapeText(csrfToken) + '">'
                             + '<input type="hidden" name="_method" value="DELETE">'
                             + '<button class="btn btn-danger btn-sm rounded-pill px-3">Delete</button>'

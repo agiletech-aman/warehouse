@@ -8,8 +8,10 @@ use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
@@ -93,6 +95,60 @@ class FnsDetectionHistory
     }
 
     /**
+     * Hide the given external camera/location groups; the history API itself has no delete.
+     *
+     * @param  Collection<int, array<string, mixed>>  $groups
+     */
+    public static function hideLocations(Collection $groups): void
+    {
+        $hidden = self::hiddenLocationKeys();
+        $now = now();
+
+        $rows = $groups
+            ->reject(fn (array $group) => isset($hidden[self::locationKey($group)]))
+            ->map(fn (array $group) => [
+                'camera_ip' => $group['camera_ip'] ?? null,
+                'camera_name' => $group['camera_name'] ?? null,
+                'godown' => $group['godown'] ?? null,
+                'compartment' => $group['compartment'] ?? null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])
+            ->values()
+            ->all();
+
+        if ($rows !== []) {
+            DB::table('fns_hidden_history_locations')->insert($rows);
+        }
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    private static function hiddenLocationKeys(): array
+    {
+        if (! Schema::hasTable('fns_hidden_history_locations')) {
+            return [];
+        }
+
+        return DB::table('fns_hidden_history_locations')
+            ->get(['camera_ip', 'camera_name', 'godown', 'compartment'])
+            ->mapWithKeys(fn ($row) => [self::locationKey((array) $row) => true])
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $location
+     */
+    private static function locationKey(array $location): string
+    {
+        return implode('|', array_map(
+            fn (string $field) => trim((string) ($location[$field] ?? '')),
+            ['camera_ip', 'camera_name', 'godown', 'compartment'],
+        ));
+    }
+
+    /**
      * External detections older than the first local detection, filtered and newest first.
      *
      * @param  array<string, mixed>  $filters
@@ -107,8 +163,11 @@ class FnsDetectionHistory
         $cutoff = FnsDetection::query()->min('detected_at');
         $cutoff = $cutoff ? Carbon::parse($cutoff) : null;
 
+        $hidden = self::hiddenLocationKeys();
+
         return self::cachedAlerts()
             ->filter(fn (array $alert) => $cutoff === null || $alert['detected_at']->lt($cutoff))
+            ->reject(fn (array $alert) => isset($hidden[self::locationKey($alert)]))
             ->filter(fn (array $alert) => self::matches($alert, $filters))
             ->sortByDesc(fn (array $alert) => $alert['detected_at']->getTimestamp() . '.' . str_pad((string) $alert['source_id'], 20, '0', STR_PAD_LEFT))
             ->map(fn (array $alert) => self::toModel($alert))
