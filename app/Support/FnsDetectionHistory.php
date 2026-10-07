@@ -67,6 +67,32 @@ class FnsDetectionHistory
     }
 
     /**
+     * External detections grouped per camera and location, in the shape FnsDetectionRows::locations() expects.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public static function externalLocationGroups(): Collection
+    {
+        return self::externalDetections([])
+            ->groupBy(fn (FnsDetection $detection) => implode('|', [$detection->camera_ip, $detection->camera_name, $detection->godown, $detection->compartment]))
+            ->map(function (Collection $detections) {
+                $first = $detections->first();
+
+                return [
+                    'camera_ip' => $first->camera_ip,
+                    'camera_name' => $first->camera_name,
+                    'warehouse_code' => null,
+                    'godown' => $first->godown,
+                    'compartment' => $first->compartment,
+                    'total' => $detections->count(),
+                    'last_detected_at' => $detections->max('detected_at'),
+                    'source' => 'external',
+                ];
+            })
+            ->values();
+    }
+
+    /**
      * External detections older than the first local detection, filtered and newest first.
      *
      * @param  array<string, mixed>  $filters

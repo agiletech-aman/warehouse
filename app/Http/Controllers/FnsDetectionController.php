@@ -32,6 +32,38 @@ class FnsDetectionController extends Controller
         return $this->dataTable($request, FnsDetection02::class);
     }
 
+    public function locations(): JsonResponse
+    {
+        return $this->locationSummary(FnsDetection::class);
+    }
+
+    public function locations02(): JsonResponse
+    {
+        return $this->locationSummary(FnsDetection02::class);
+    }
+
+    /**
+     * Every location (warehouse / godown / compartment) that has sent detections.
+     *
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
+     */
+    private function locationSummary(string $model): JsonResponse
+    {
+        $groups = $model::query()
+            ->selectRaw('camera_ip, camera_name, warehouse_code, godown, compartment, COUNT(*) as total, MAX(detected_at) as last_detected_at')
+            ->groupBy('camera_ip', 'camera_name', 'warehouse_code', 'godown', 'compartment')
+            ->get()
+            ->map(fn ($group) => $group->getAttributes() + ['source' => 'local']);
+
+        if ($model === FnsDetection::class) {
+            $groups = $groups->concat(FnsDetectionHistory::externalLocationGroups());
+        }
+
+        return response()->json([
+            'data' => FnsDetectionRows::locations($groups),
+        ]);
+    }
+
     /**
      * @param  class-string<FnsDetection|FnsDetection02>  $model
      */

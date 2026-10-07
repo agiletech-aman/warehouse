@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -51,6 +52,47 @@ class FnsDetectionRows
 
             return $row;
         })->values();
+    }
+
+    /**
+     * Locations the detections come from, grouped by warehouse, godown and compartment.
+     *
+     * @param  Collection<int, object|array>  $groups  Rows with camera_ip, camera_name, warehouse_code,
+     *                                                 godown, compartment, total, last_detected_at, source.
+     * @return Collection<int, array<string, mixed>>
+     */
+    public static function locations(Collection $groups): Collection
+    {
+        $groups = $groups->map(fn ($group) => (array) $group);
+        $warehouseNames = self::warehouseNamesFor($groups->pluck('warehouse_code'));
+        $warehouseNamesByCameraIp = self::warehouseNamesForCameraIps($groups->pluck('camera_ip'));
+
+        return $groups
+            ->map(function (array $group) use ($warehouseNames, $warehouseNamesByCameraIp) {
+                $group['warehouse_name'] = $warehouseNames->get(self::normalizeWarehouseCode($group['warehouse_code'] ?? null))
+                    ?: $warehouseNamesByCameraIp->get($group['camera_ip'] ?? null)
+                    ?: (filled($group['warehouse_code'] ?? null) ? $group['warehouse_code'] : 'Unknown');
+                $group['location'] = self::joinParts($group['godown'] ?? null, $group['compartment'] ?? null);
+
+                return $group;
+            })
+            ->groupBy(fn (array $group) => $group['warehouse_name'] . '|' . $group['location'])
+            ->map(function (Collection $rows) {
+                $first = $rows->first();
+                $lastDetectedAt = $rows->pluck('last_detected_at')->filter()->map(fn ($date) => Carbon::parse($date))->max();
+
+                return [
+                    'warehouse_name' => $first['warehouse_name'],
+                    'location' => $first['location'],
+                    'cameras' => $rows->map(fn (array $row) => $row['camera_name'] ?: $row['camera_ip'])
+                        ->filter()->unique()->sort()->values()->all(),
+                    'total' => (int) $rows->sum('total'),
+                    'last_detected_at' => $lastDetectedAt?->format('d M Y H:i:s') ?? '-',
+                    'sources' => $rows->pluck('source')->unique()->sort()->values()->all(),
+                ];
+            })
+            ->sortByDesc('total')
+            ->values();
     }
 
     /**
