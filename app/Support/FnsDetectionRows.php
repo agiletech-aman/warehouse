@@ -53,7 +53,7 @@ class FnsDetectionRows
     }
 
     /**
-     * Locations the detections come from, grouped by the warehouse and godown / compartment shown on the index.
+     * Warehouses the detections come from, with every godown / compartment counted together.
      *
      * @param  Collection<int, object|array>  $groups  Rows with camera_ip, camera_name, warehouse_code,
      *                                                 godown, compartment, total, last_detected_at, source.
@@ -61,16 +61,20 @@ class FnsDetectionRows
      */
     public static function locations(Collection $groups): Collection
     {
-        return self::resolveLocations($groups)
+        $resolved = self::resolveLocations($groups);
+        $regionNames = self::regionNamesForWarehouses($resolved->pluck('warehouse_name'));
+
+        return $resolved
             ->groupBy('key')
-            ->map(function (Collection $rows, string $key) {
+            ->map(function (Collection $rows, string $key) use ($regionNames) {
                 $first = $rows->first();
                 $lastDetectedAt = $rows->pluck('last_detected_at')->filter()->map(fn ($date) => Carbon::parse($date))->max();
 
                 return [
                     'key' => $key,
+                    'region_name' => $regionNames->get(strtolower(trim($first['warehouse_name']))) ?: '-',
                     'warehouse_name' => $first['warehouse_name'],
-                    'location' => $first['location'],
+                    'location_count' => $rows->pluck('location')->unique()->count(),
                     'total' => (int) $rows->sum('total'),
                     'last_detected_at' => $lastDetectedAt?->format('d M Y H:i:s') ?? '-',
                 ];
@@ -80,7 +84,7 @@ class FnsDetectionRows
     }
 
     /**
-     * Add the warehouse name, location and location key to each raw camera/location group,
+     * Add the warehouse name, location and warehouse key to each raw camera/location group,
      * resolved exactly like the rows on the index page.
      *
      * @param  Collection<int, object|array>  $groups
@@ -95,7 +99,7 @@ class FnsDetectionRows
         return $groups->map(function (array $group) use ($warehouseNames, $warehouseNamesByCameraIp) {
             $group['warehouse_name'] = self::warehouseName($group['warehouse_code'] ?? null, $group['camera_ip'] ?? null, $warehouseNames, $warehouseNamesByCameraIp);
             $group['location'] = self::joinParts($group['godown'] ?? null, $group['compartment'] ?? null);
-            $group['key'] = sha1($group['warehouse_name'] . '|' . $group['location']);
+            $group['key'] = sha1($group['warehouse_name']);
 
             return $group;
         });
@@ -166,6 +170,37 @@ class FnsDetectionRows
                 ->mapWithKeys(fn (Warehouse $warehouse) => [
                     self::normalizeWarehouseCode($warehouse->warehouse_code) => $warehouse->warehouse_name,
                 ]);
+    }
+
+    /**
+     * Region names keyed by lowercased warehouse name; falls back to the region the sensors report.
+     */
+    private static function regionNamesForWarehouses(Collection $warehouseNames): Collection
+    {
+        $names = $warehouseNames->filter(fn ($name) => filled($name) && $name !== '-')->unique()->values();
+
+        if ($names->isEmpty()) {
+            return collect();
+        }
+
+        $regions = Warehouse::withTrashed()
+            ->with('region:frs_id,region_name')
+            ->whereIn('warehouse_name', $names)
+            ->get(['warehouse_name', 'region_frs_id'])
+            ->mapWithKeys(fn (Warehouse $warehouse) => [
+                strtolower(trim($warehouse->warehouse_name)) => $warehouse->region?->region_name,
+            ])
+            ->filter();
+
+        if (Schema::hasTable('device_latest_status')) {
+            $regions = $regions->union(DB::table('device_latest_status')
+                ->whereIn('warehouse', $names)
+                ->whereNotNull('region')
+                ->pluck('region', 'warehouse')
+                ->mapWithKeys(fn ($region, $warehouse) => [strtolower(trim($warehouse)) => $region]));
+        }
+
+        return $regions;
     }
 
     private static function normalizeWarehouseCode(?string $warehouseCode): string

@@ -31,8 +31,9 @@
             <table id="fnsLocationsTable" class="table table-hover align-middle mb-0 w-100">
                 <thead>
                     <tr>
+                        <th>Region</th>
                         <th>Warehouse</th>
-                        <th>Godown / Compartment</th>
+                        <th>Godowns / Compartments</th>
                         <th>Detections</th>
                         <th>Last Detected</th>
                         <th>Action</th>
@@ -59,7 +60,7 @@
             paging: true,
             info: true,
             pageLength: 25,
-            order: [[2, 'desc']],
+            order: [[3, 'desc']],
             language: {
                 search: 'Search locations:',
                 emptyTable: 'No detections yet.'
@@ -69,8 +70,9 @@
                 dataSrc: 'data'
             },
             columns: [
+                { data: 'region_name', render: escapeText },
                 { data: 'warehouse_name', render: escapeText },
-                { data: 'location', render: escapeText },
+                { data: 'location_count' },
                 { data: 'total' },
                 { data: 'last_detected_at', render: escapeText },
                 {
@@ -82,7 +84,7 @@
                             return '-';
                         }
 
-                        const label = row.warehouse_name + ' (' + row.location + ')';
+                        const label = row.warehouse_name + ' (all godowns / compartments)';
 
                         return '<form action="' + escapeText(value) + '" method="POST" class="d-inline" data-confirm-delete'
                             + ' data-confirm-title="Delete location?" data-confirm-message="This will permanently delete all '

@@ -77,7 +77,7 @@ class FnsDetectionController extends Controller
     }
 
     /**
-     * Every location (warehouse / godown / compartment) that has sent detections.
+     * Every warehouse that has sent detections, all its godowns / compartments counted together.
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model
      */
@@ -99,7 +99,7 @@ class FnsDetectionController extends Controller
     }
 
     /**
-     * Delete every stored detection (and its snapshot file) for one location.
+     * Delete every stored detection (and its snapshot file) for one warehouse.
      * History API alerts cannot be deleted at the source, so that location is hidden instead.
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model
@@ -147,7 +147,7 @@ class FnsDetectionController extends Controller
         $first = $resolved->first();
 
         return redirect()->back()->with('success', $deleted . ' detection(s) deleted for '
-            . $first['warehouse_name'] . ' (' . $first['location'] . ').');
+            . $first['warehouse_name'] . '.');
     }
 
     /**
