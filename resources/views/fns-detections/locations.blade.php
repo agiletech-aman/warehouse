@@ -60,6 +60,8 @@
             paging: true,
             info: true,
             pageLength: 25,
+            // Keep the page, sort and search after a delete reloads the page.
+            stateSave: true,
             order: [[3, 'desc']],
             language: {
                 search: 'Search locations:',
@@ -74,7 +76,13 @@
                 { data: 'warehouse_name', render: escapeText },
                 { data: 'location_count' },
                 { data: 'total' },
-                { data: 'last_detected_at', render: escapeText },
+                {
+                    data: 'last_detected_at',
+                    // Sort on the timestamp; the "d M Y H:i:s" text would sort alphabetically.
+                    render: function (value, type, row) {
+                        return type === 'sort' || type === 'type' ? row.last_detected_ts : escapeText(value);
+                    }
+                },
                 {
                     data: 'delete_url',
                     orderable: false,

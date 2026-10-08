@@ -77,6 +77,7 @@ class FnsDetectionRows
                     'location_count' => $rows->pluck('location')->unique()->count(),
                     'total' => (int) $rows->sum('total'),
                     'last_detected_at' => $lastDetectedAt?->format('d M Y H:i:s') ?? '-',
+                    'last_detected_ts' => $lastDetectedAt?->timestamp ?? 0,
                 ];
             })
             ->sortByDesc('total')
