@@ -76,7 +76,13 @@ class MasterAlertService
                 'recorded_at',
             ]);
 
-        $data = $readings->map(function (Reading $reading) {
+        // Historical rows keep the status they were recorded with; the stale
+        // device cron only updates the current-status projection.
+        $currentStatuses = DeviceLatestStatus::query()
+            ->whereIn('sensor_device_id', $readings->pluck('sensor_device_id')->filter()->unique()->values())
+            ->pluck('status', 'sensor_device_id');
+
+        $data = $readings->map(function (Reading $reading) use ($currentStatuses) {
             $location = collect([$reading->godown, $reading->compartment])
                 ->filter(fn ($part) => $part !== null && $part !== '')
                 ->implode(' / ');
@@ -101,7 +107,9 @@ class MasterAlertService
                 'unit' => $reading->unit ?? 'N/A',
                 'latestReadingTime' => $reading->recorded_at?->format('Y-m-d\TH:i:s.v') ?? 'N/A',
                 'level' => Reading::normalizeLevel($reading->reading_value, $reading->level),
-                'status' => strtolower((string) ($reading->status ?: 'offline')),
+                'status' => strtolower((string) (
+                    $currentStatuses->get($reading->sensor_device_id) ?: $reading->status ?: 'offline'
+                )),
                 'deviceIp' => $reading->device_ip ?? 'N/A',
             ];
         })->values()->all();
