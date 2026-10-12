@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
@@ -204,6 +205,12 @@ class MasterAlertService
             fn (Warehouse $warehouse) => strtolower(trim((string) $warehouse->warehouse_name))
         );
 
+        // Historical rows keep the status they were recorded with; the stale
+        // device cron only updates the current-status projection.
+        $currentStatuses = DeviceLatestStatus::query()
+            ->whereIn('sensor_device_id', $readings->pluck('sensor_device_id')->filter()->unique()->values())
+            ->pluck('status', 'sensor_device_id');
+
         $regionCodes = $readings->pluck('region_code')->filter()->unique()->values();
         $regionNames = $readings->pluck('region')->filter()->unique()->values();
 
@@ -223,7 +230,8 @@ class MasterAlertService
             $warehousesByCode,
             $warehousesByName,
             $regionsByCode,
-            $regionsByName
+            $regionsByName,
+            $currentStatuses
         ) {
             $warehouse = $warehousesByCode->get(
                 strtoupper(trim((string) $reading->warehouse_code))
@@ -276,7 +284,9 @@ class MasterAlertService
                 'recordTime' => $reading->recorded_at?->format('Y-m-d\TH:i:s.v'),
                 'regDate' => $reading->created_at?->format('Y-m-d\TH:i:s.v'),
                 'deviceTypeId' => $deviceTypeId,
-                'deviceStatus' => ucfirst(strtolower((string) $reading->status)),
+                'deviceStatus' => ucfirst(strtolower((string) (
+                    $currentStatuses->get($reading->sensor_device_id) ?? $reading->status
+                ))),
             ];
         })->values()->all();
 

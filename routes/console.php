@@ -9,7 +9,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('devices:mark-stale-offline')
+Schedule::command('devices:mark-stale-offline --minutes=30')
     ->everyThirtyMinutes()
     ->withoutOverlapping();
 
