@@ -68,7 +68,9 @@ class MasterAlertSummaryService
             ->whereRaw("{$gas} IN (?, ?)", ['co2', 'ph3']);
         $this->applyFilters($base, $filters);
 
-        $status = "LOWER(COALESCE(status, ''))";
+        // Reading rows keep the status they were recorded with; the stale
+        // device cron only updates the current-status projection.
+        $status = "LOWER(COALESCE((SELECT dls.status FROM device_latest_status dls WHERE dls.sensor_device_id = readings.sensor_device_id), readings.status, ''))";
         $severity = "CASE WHEN LOWER(COALESCE(level, '')) IN ('severe', 'critical') THEN LOWER(level) ELSE 'normal' END";
 
         $overall = (clone $base)
