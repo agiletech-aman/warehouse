@@ -11,6 +11,7 @@ use App\Support\FnsDetectionRows;
 use App\Support\FnsDetectionWarehouseLookup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Arr;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
@@ -78,13 +79,14 @@ class FnsDetectionController extends Controller
 
     public function aiList02(Request $request): JsonResponse
     {
-        return $this->aiRows($request, FnsDetection02::class);
+        return $this->aiRows($request, FnsDetection02::class, ['snapshot_path', 'snapshot_url']);
     }
 
     /**
      * @param  class-string<FnsDetection|FnsDetection02>  $model
+     * @param  list<string>  $hiddenKeys  Row keys left out of the response.
      */
-    private function aiRows(Request $request, string $model): JsonResponse
+    private function aiRows(Request $request, string $model, array $hiddenKeys = []): JsonResponse
     {
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
@@ -121,7 +123,8 @@ class FnsDetectionController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Detections fetched successfully.',
-            'data' => FnsDetectionRows::format($detections->getCollection(), true),
+            'data' => FnsDetectionRows::format($detections->getCollection(), true)
+                ->map(fn (array $row) => Arr::except($row, $hiddenKeys)),
             'pagination' => [
                 'current_page' => $detections->currentPage(),
                 'per_page' => $detections->perPage(),
