@@ -11,6 +11,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -280,7 +281,13 @@ class FnsDetectionRows
                 $body = $response instanceof Response && $response->successful() ? $response->body() : null;
                 $usable = $body !== null && $body !== '' && strlen($body) <= self::MAX_SNAPSHOT_BYTES;
 
-                $cache->put($cacheKey($url), $usable ? $body : '', $usable ? now()->addDay() : now()->addMinutes(10));
+                // A cache that cannot be written (e.g. storage permissions) must not break the page.
+                try {
+                    $cache->put($cacheKey($url), $usable ? $body : '', $usable ? now()->addDay() : now()->addMinutes(10));
+                } catch (\Throwable $exception) {
+                    Log::warning('FNS snapshot could not be cached.', ['url' => $url, 'error' => $exception->getMessage()]);
+                }
+
                 $contents[$url] = $usable ? $body : null;
             }
         }
