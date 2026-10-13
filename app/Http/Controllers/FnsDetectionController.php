@@ -203,7 +203,7 @@ class FnsDetectionController extends Controller
         $query = $model::query()->filter($filters);
 
         if ($model === FnsDetection::class) {
-            // Older detections come from the external history API.
+            // Detections from the external history API are merged in by date.
             $slice = FnsDetectionHistory::slice($query, $filters, $start, $length);
 
             return response()->json([

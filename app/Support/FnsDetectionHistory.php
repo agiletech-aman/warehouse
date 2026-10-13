@@ -15,10 +15,8 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
- * Combines local FNS detections with the older alerts from the external camera-alerts API.
- *
- * Local rows are used from the first detection stored in our DB onwards; everything older
- * than that comes from the external API, so the two sources never overlap.
+ * Combines local FNS detections with every alert from the external camera-alerts API,
+ * merged newest first by detection time.
  */
 class FnsDetectionHistory
 {
@@ -39,22 +37,41 @@ class FnsDetectionHistory
         $localTotal = (clone $query)->count();
         $external = self::externalDetections($filters);
 
-        $items = collect();
+        // The sources overlap in time, so merge both newest-first lists up to the end of the
+        // requested page. Only id + detected_at are read for local rows until the page is known.
+        $end = $offset + $limit;
+        $local = (clone $query)
+            ->latest('detected_at')
+            ->latest('id')
+            ->limit($end)
+            ->toBase()
+            ->get(['id', 'detected_at'])
+            ->values();
+        $external = $external->take($end)->values();
 
-        if ($offset < $localTotal) {
-            $items = (clone $query)
-                ->latest('detected_at')
-                ->latest('id')
-                ->offset($offset)
-                ->limit($limit)
-                ->get();
+        $page = [];
+        $l = 0;
+        $e = 0;
+
+        for ($i = 0; $i < $end && ($l < $local->count() || $e < $external->count()); $i++) {
+            $takeLocal = $e >= $external->count()
+                || ($l < $local->count()
+                    && Carbon::parse($local[$l]->detected_at)->gte($external[$e]->detected_at));
+
+            $entry = $takeLocal ? ['local', $local[$l++]->id] : ['external', $external[$e++]];
+
+            if ($i >= $offset) {
+                $page[] = $entry;
+            }
         }
 
-        $remaining = $limit - $items->count();
+        $localIds = collect($page)->where(0, 'local')->pluck(1)->all();
+        $localModels = $localIds === [] ? collect() : FnsDetection::query()->whereKey($localIds)->get()->keyBy('id');
 
-        if ($remaining > 0) {
-            $items = $items->concat($external->slice(max($offset - $localTotal, 0), $remaining))->values();
-        }
+        $items = collect($page)
+            ->map(fn (array $entry) => $entry[0] === 'local' ? $localModels->get($entry[1]) : $entry[1])
+            ->filter()
+            ->values();
 
         return [
             'items' => $items,
@@ -64,7 +81,7 @@ class FnsDetectionHistory
     }
 
     /**
-     * Count of all external detections older than the local data (unfiltered).
+     * Count of all external detections (unfiltered).
      */
     public static function externalTotal(): int
     {
@@ -152,7 +169,7 @@ class FnsDetectionHistory
     }
 
     /**
-     * External detections older than the first local detection, filtered and newest first.
+     * All external detections, filtered and newest first.
      *
      * @param  array<string, mixed>  $filters
      * @return Collection<int, FnsDetection>
@@ -163,13 +180,10 @@ class FnsDetectionHistory
             return collect();
         }
 
-        $cutoff = FnsDetection::query()->min('detected_at');
-        $cutoff = $cutoff ? Carbon::parse($cutoff) : null;
 
         $hidden = self::hiddenLocationKeys();
 
         return self::cachedAlerts()
-            ->filter(fn (array $alert) => $cutoff === null || $alert['detected_at']->lt($cutoff))
             ->reject(fn (array $alert) => isset($hidden[self::locationKey($alert)]))
             ->filter(fn (array $alert) => self::matches($alert, $filters))
             ->sortByDesc(fn (array $alert) => $alert['detected_at']->getTimestamp() . '.' . str_pad((string) $alert['source_id'], 20, '0', STR_PAD_LEFT))
@@ -230,7 +244,8 @@ class FnsDetectionHistory
         $alerts = [];
 
         try {
-            foreach ((array) config('fns.history.alert_types', ['fire']) as $alertType) {
+            // No configured types means one unfiltered pass over every alert type.
+            foreach ((array) config('fns.history.alert_types') ?: [null] as $alertType) {
                 // No page or date limit: keep reading until the API runs out of data.
                 for ($page = 1; ; $page += self::PAGE_BATCH) {
                     $pages = range($page, $page + self::PAGE_BATCH - 1);
@@ -239,7 +254,7 @@ class FnsDetectionHistory
                         fn (int $p) => $pool->as((string) $p)
                             ->timeout(15)
                             ->acceptJson()
-                            ->get($url, ['alert_type' => $alertType, 'pageNumber' => $p, 'pageSize' => self::PAGE_SIZE]),
+                            ->get($url, array_filter(['alert_type' => $alertType, 'pageNumber' => $p, 'pageSize' => self::PAGE_SIZE])),
                         $pages,
                     ));
 
@@ -249,7 +264,7 @@ class FnsDetectionHistory
                         $response = $responses[(string) $p];
 
                         if ($response instanceof \Throwable || ! $response->successful()) {
-                            throw new \RuntimeException('Page ' . $p . ' of ' . $alertType . ' alerts could not be fetched.');
+                            throw new \RuntimeException('Page ' . $p . ' of ' . ($alertType ?? 'all') . ' alerts could not be fetched.');
                         }
 
                         $data = $response->json('data') ?? [];
