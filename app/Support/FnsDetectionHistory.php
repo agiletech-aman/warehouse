@@ -38,7 +38,7 @@ class FnsDetectionHistory
     {
         $model = get_class($query->getModel());
         $localTotal = (clone $query)->count();
-        $external = self::externalDetections($filters, $model);
+        $external = self::externalAlerts($filters, $model);
         $externalTotal = $external->count();
 
         // Both sources cover the same dates, so merge the two newest-first lists up to the end of
@@ -51,7 +51,8 @@ class FnsDetectionHistory
             ->toBase()
             ->get(['id', 'detected_at'])
             ->values();
-        $external = $external->take($end)->values();
+        // Only alerts that can land on this page become models; the full history is too large for that.
+        $external = $external->take($end)->map(fn (array $alert) => self::toModel($alert, $model))->values();
 
         $page = [];
         $l = 0;
@@ -91,7 +92,13 @@ class FnsDetectionHistory
      */
     public static function externalTotal(string $model): int
     {
-        return self::externalDetections([], $model)->count();
+        if (! self::historyEnabled()) {
+            return 0;
+        }
+
+        $hidden = self::hiddenLocationKeys($model);
+
+        return self::cachedAlerts()->reject(fn (array $alert) => isset($hidden[self::locationKey($alert)]))->count();
     }
 
     /**
@@ -198,7 +205,21 @@ class FnsDetectionHistory
      */
     public static function externalDetections(array $filters, string $model): Collection
     {
-        if (! config('fns.history.enabled') || blank(config('fns.history.url'))) {
+        return self::externalAlerts($filters, $model)
+            ->map(fn (array $alert) => self::toModel($alert, $model))
+            ->values();
+    }
+
+    /**
+     * All external alerts as plain arrays, filtered and newest first.
+     *
+     * @param  array<string, mixed>  $filters
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
+     * @return Collection<int, array<string, mixed>>
+     */
+    private static function externalAlerts(array $filters, string $model): Collection
+    {
+        if (! self::historyEnabled()) {
             return collect();
         }
 
@@ -208,8 +229,12 @@ class FnsDetectionHistory
             ->reject(fn (array $alert) => isset($hidden[self::locationKey($alert)]))
             ->filter(fn (array $alert) => self::matches($alert, $filters))
             ->sortByDesc(fn (array $alert) => $alert['detected_at']->getTimestamp() . '.' . str_pad((string) $alert['source_id'], 20, '0', STR_PAD_LEFT))
-            ->map(fn (array $alert) => self::toModel($alert, $model))
             ->values();
+    }
+
+    private static function historyEnabled(): bool
+    {
+        return config('fns.history.enabled') && filled(config('fns.history.url'));
     }
 
     /**
