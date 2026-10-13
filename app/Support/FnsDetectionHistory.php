@@ -16,11 +16,8 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
- * Combines local FNS detections (fns_detections or fns_detections_02) with the older alerts
- * from the external camera-alerts API.
- *
- * Each table's own rows are used from its first stored detection onwards; everything older
- * than that comes from the external API, so the two sources never overlap.
+ * Combines local FNS detections (fns_detections or fns_detections_02) with every alert from the
+ * external camera-alerts API, merged newest first by detection time.
  */
 class FnsDetectionHistory
 {
@@ -38,35 +35,56 @@ class FnsDetectionHistory
      */
     public static function slice(Builder $query, array $filters, int $offset, int $limit): array
     {
+        $model = get_class($query->getModel());
         $localTotal = (clone $query)->count();
-        $external = self::externalDetections($filters, get_class($query->getModel()));
+        $external = self::externalDetections($filters, $model);
+        $externalTotal = $external->count();
 
-        $items = collect();
+        // Both sources cover the same dates, so merge the two newest-first lists up to the end of
+        // the requested page. Local rows are read as id + detected_at until the page is known.
+        $end = $offset + $limit;
+        $local = (clone $query)
+            ->latest('detected_at')
+            ->latest('id')
+            ->limit($end)
+            ->toBase()
+            ->get(['id', 'detected_at'])
+            ->values();
+        $external = $external->take($end)->values();
 
-        if ($offset < $localTotal) {
-            $items = (clone $query)
-                ->latest('detected_at')
-                ->latest('id')
-                ->offset($offset)
-                ->limit($limit)
-                ->get();
+        $page = [];
+        $l = 0;
+        $e = 0;
+
+        for ($i = 0; $i < $end && ($l < $local->count() || $e < $external->count()); $i++) {
+            $takeLocal = $e >= $external->count()
+                || ($l < $local->count()
+                    && Carbon::parse($local[$l]->detected_at)->gte($external[$e]->detected_at));
+
+            $entry = $takeLocal ? ['local', $local[$l++]->id] : ['external', $external[$e++]];
+
+            if ($i >= $offset) {
+                $page[] = $entry;
+            }
         }
 
-        $remaining = $limit - $items->count();
+        $localIds = collect($page)->where(0, 'local')->pluck(1)->all();
+        $localModels = $localIds === [] ? collect() : $model::query()->whereKey($localIds)->get()->keyBy('id');
 
-        if ($remaining > 0) {
-            $items = $items->concat($external->slice(max($offset - $localTotal, 0), $remaining))->values();
-        }
+        $items = collect($page)
+            ->map(fn (array $entry) => $entry[0] === 'local' ? $localModels->get($entry[1]) : $entry[1])
+            ->filter()
+            ->values();
 
         return [
             'items' => $items,
-            'total' => $localTotal + $external->count(),
+            'total' => $localTotal + $externalTotal,
             'local_total' => $localTotal,
         ];
     }
 
     /**
-     * Count of all external detections older than the model's local data (unfiltered).
+     * Count of all external detections (unfiltered).
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model
      */
@@ -171,7 +189,7 @@ class FnsDetectionHistory
     }
 
     /**
-     * External detections older than the model's first local detection, filtered and newest first.
+     * All external detections, filtered and newest first.
      *
      * @param  array<string, mixed>  $filters
      * @param  class-string<FnsDetection|FnsDetection02>  $model
@@ -183,12 +201,9 @@ class FnsDetectionHistory
             return collect();
         }
 
-        $cutoff = $model::query()->min('detected_at');
-        $cutoff = $cutoff ? Carbon::parse($cutoff) : null;
         $hidden = self::hiddenLocationKeys($model);
 
         return self::cachedAlerts()
-            ->filter(fn (array $alert) => $cutoff === null || $alert['detected_at']->lt($cutoff))
             ->reject(fn (array $alert) => isset($hidden[self::locationKey($alert)]))
             ->filter(fn (array $alert) => self::matches($alert, $filters))
             ->sortByDesc(fn (array $alert) => $alert['detected_at']->getTimestamp() . '.' . str_pad((string) $alert['source_id'], 20, '0', STR_PAD_LEFT))

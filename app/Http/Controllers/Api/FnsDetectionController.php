@@ -134,7 +134,7 @@ class FnsDetectionController extends Controller
     }
 
     /**
-     * Paginate local detections plus the older alerts from the history API.
+     * Paginate local detections merged by date with the alerts from the history API.
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model
      * @param  array<string, mixed>  $filters
