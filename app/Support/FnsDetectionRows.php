@@ -68,7 +68,7 @@ class FnsDetectionRows
             ];
 
             $apiImage = $apiImages->get($detection->id);
-            [$mimeType, $base64] = $apiImage !== null
+            [$mimeType, $base64] = $withSnapshotBase64 && $apiImage !== null
                 ? self::splitDataUri($apiImage)
                 : self::encodeSnapshot($snapshots[trim((string) $detection->snapshot_path)] ?? null);
 
