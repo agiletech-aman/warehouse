@@ -83,11 +83,7 @@ class FnsDetectionController extends Controller
      */
     private function locationSummary(string $model, string $destroyRoute): JsonResponse
     {
-        $groups = $this->localLocationGroups($model);
-
-        if ($model === FnsDetection::class) {
-            $groups = $groups->concat(FnsDetectionHistory::externalLocationGroups());
-        }
+        $groups = $this->localLocationGroups($model)->concat(FnsDetectionHistory::externalLocationGroups($model));
 
         $locations = FnsDetectionRows::locations($groups)->map(fn (array $location) => $location + [
             'delete_url' => route($destroyRoute, ['location' => $location['key']]),
@@ -106,9 +102,7 @@ class FnsDetectionController extends Controller
      */
     private function deleteLocation(string $model, string $location): RedirectResponse
     {
-        $external = $model === FnsDetection::class
-            ? FnsDetectionHistory::externalLocationGroups()
-            : collect();
+        $external = FnsDetectionHistory::externalLocationGroups($model);
 
         $resolved = FnsDetectionRows::resolveLocations($this->localLocationGroups($model)->concat($external))
             ->where('key', $location);
@@ -140,7 +134,7 @@ class FnsDetectionController extends Controller
         $this->deleteSnapshots($snapshots);
 
         if ($externalGroups->isNotEmpty()) {
-            FnsDetectionHistory::hideLocations($externalGroups);
+            FnsDetectionHistory::hideLocations($externalGroups, $model);
             $deleted += (int) $externalGroups->sum('total');
         }
 
@@ -202,33 +196,14 @@ class FnsDetectionController extends Controller
         ];
         $query = $model::query()->filter($filters);
 
-        if ($model === FnsDetection::class) {
-            // Detections from the external history API are merged in by date.
-            $slice = FnsDetectionHistory::slice($query, $filters, $start, $length);
-
-            return response()->json([
-                'draw' => $draw,
-                'recordsTotal' => $model::query()->count() + FnsDetectionHistory::externalTotal(),
-                'recordsFiltered' => $slice['total'],
-                'data' => FnsDetectionRows::format($slice['items']),
-            ]);
-        }
-
-        $recordsTotal = $model::query()->count();
-        $recordsFiltered = (clone $query)->count();
-
-        $detections = $query
-            ->latest('detected_at')
-            ->latest('id')
-            ->offset($start)
-            ->limit($length)
-            ->get();
+        // Detections older than this table's first row come from the external history API.
+        $slice = FnsDetectionHistory::slice($query, $filters, $start, $length);
 
         return response()->json([
             'draw' => $draw,
-            'recordsTotal' => $recordsTotal,
-            'recordsFiltered' => $recordsFiltered,
-            'data' => FnsDetectionRows::format($detections),
+            'recordsTotal' => $model::query()->count() + FnsDetectionHistory::externalTotal($model),
+            'recordsFiltered' => $slice['total'],
+            'data' => FnsDetectionRows::format($slice['items']),
         ]);
     }
 }

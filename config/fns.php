@@ -3,7 +3,7 @@
 return [
     'push_secret' => env('FNS_PUSH_SECRET'),
 
-    // Every detection from this API is shown alongside the rows in fns_detections.
+    // Detections older than the first row in fns_detections / fns_detections_02 are read from this API.
     'history' => [
         'enabled' => env('FNS_HISTORY_ENABLED', true),
         'url' => env('FNS_HISTORY_URL', 'http://216.48.182.224:8003/api/camera-alerts'),

@@ -134,24 +134,15 @@ class FnsDetectionController extends Controller
     }
 
     /**
-     * Paginate local detections; fns_detections also includes older alerts from the history API.
+     * Paginate local detections plus the older alerts from the history API.
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model
      * @param  array<string, mixed>  $filters
      */
     private function paginateWithHistory(Request $request, string $model, array $filters, int $perPage): LengthAwarePaginator
     {
-        if ($model !== FnsDetection::class) {
-            return $model::query()
-                ->filter($filters)
-                ->latest('detected_at')
-                ->latest('id')
-                ->paginate($perPage)
-                ->withQueryString();
-        }
-
         $page = max((int) ($filters['page'] ?? 1), 1);
-        $slice = FnsDetectionHistory::slice(FnsDetection::query()->filter($filters), $filters, ($page - 1) * $perPage, $perPage);
+        $slice = FnsDetectionHistory::slice($model::query()->filter($filters), $filters, ($page - 1) * $perPage, $perPage);
 
         return (new LengthAwarePaginator($slice['items'], $slice['total'], $perPage, $page, [
             'path' => $request->url(),

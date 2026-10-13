@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\FnsDetection;
+use App\Models\FnsDetection02;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Support\Carbon;
@@ -15,8 +16,11 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 /**
- * Combines local FNS detections with every alert from the external camera-alerts API,
- * merged newest first by detection time.
+ * Combines local FNS detections (fns_detections or fns_detections_02) with the older alerts
+ * from the external camera-alerts API.
+ *
+ * Each table's own rows are used from its first stored detection onwards; everything older
+ * than that comes from the external API, so the two sources never overlap.
  */
 class FnsDetectionHistory
 {
@@ -28,50 +32,31 @@ class FnsDetectionHistory
     /**
      * Newest-first slice of local + external detections.
      *
-     * @param  Builder<FnsDetection>  $query  Local query with filters already applied.
+     * @param  Builder<FnsDetection|FnsDetection02>  $query  Local query with filters already applied.
      * @param  array<string, mixed>  $filters
-     * @return array{items: Collection<int, FnsDetection>, total: int, local_total: int}
+     * @return array{items: Collection<int, FnsDetection|FnsDetection02>, total: int, local_total: int}
      */
     public static function slice(Builder $query, array $filters, int $offset, int $limit): array
     {
         $localTotal = (clone $query)->count();
-        $external = self::externalDetections($filters);
+        $external = self::externalDetections($filters, get_class($query->getModel()));
 
-        // The sources overlap in time, so merge both newest-first lists up to the end of the
-        // requested page. Only id + detected_at are read for local rows until the page is known.
-        $end = $offset + $limit;
-        $local = (clone $query)
-            ->latest('detected_at')
-            ->latest('id')
-            ->limit($end)
-            ->toBase()
-            ->get(['id', 'detected_at'])
-            ->values();
-        $external = $external->take($end)->values();
+        $items = collect();
 
-        $page = [];
-        $l = 0;
-        $e = 0;
-
-        for ($i = 0; $i < $end && ($l < $local->count() || $e < $external->count()); $i++) {
-            $takeLocal = $e >= $external->count()
-                || ($l < $local->count()
-                    && Carbon::parse($local[$l]->detected_at)->gte($external[$e]->detected_at));
-
-            $entry = $takeLocal ? ['local', $local[$l++]->id] : ['external', $external[$e++]];
-
-            if ($i >= $offset) {
-                $page[] = $entry;
-            }
+        if ($offset < $localTotal) {
+            $items = (clone $query)
+                ->latest('detected_at')
+                ->latest('id')
+                ->offset($offset)
+                ->limit($limit)
+                ->get();
         }
 
-        $localIds = collect($page)->where(0, 'local')->pluck(1)->all();
-        $localModels = $localIds === [] ? collect() : FnsDetection::query()->whereKey($localIds)->get()->keyBy('id');
+        $remaining = $limit - $items->count();
 
-        $items = collect($page)
-            ->map(fn (array $entry) => $entry[0] === 'local' ? $localModels->get($entry[1]) : $entry[1])
-            ->filter()
-            ->values();
+        if ($remaining > 0) {
+            $items = $items->concat($external->slice(max($offset - $localTotal, 0), $remaining))->values();
+        }
 
         return [
             'items' => $items,
@@ -81,22 +66,25 @@ class FnsDetectionHistory
     }
 
     /**
-     * Count of all external detections (unfiltered).
+     * Count of all external detections older than the model's local data (unfiltered).
+     *
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
      */
-    public static function externalTotal(): int
+    public static function externalTotal(string $model): int
     {
-        return self::externalDetections([])->count();
+        return self::externalDetections([], $model)->count();
     }
 
     /**
      * External detections grouped per camera and location, in the shape FnsDetectionRows::locations() expects.
      *
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
      * @return Collection<int, array<string, mixed>>
      */
-    public static function externalLocationGroups(): Collection
+    public static function externalLocationGroups(string $model): Collection
     {
-        return self::externalDetections([])
-            ->groupBy(fn (FnsDetection $detection) => implode('|', [$detection->camera_ip, $detection->camera_name, $detection->godown, $detection->compartment]))
+        return self::externalDetections([], $model)
+            ->groupBy(fn ($detection) => implode('|', [$detection->camera_ip, $detection->camera_name, $detection->godown, $detection->compartment]))
             ->map(function (Collection $detections) {
                 $first = $detections->first();
 
@@ -115,18 +103,21 @@ class FnsDetectionHistory
     }
 
     /**
-     * Hide the given external camera/location groups; the history API itself has no delete.
+     * Hide the given external camera/location groups for one detections table; the history API itself has no delete.
      *
      * @param  Collection<int, array<string, mixed>>  $groups
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
      */
-    public static function hideLocations(Collection $groups): void
+    public static function hideLocations(Collection $groups, string $model): void
     {
-        $hidden = self::hiddenLocationKeys();
+        $hidden = self::hiddenLocationKeys($model);
+        $table = (new $model)->getTable();
         $now = now();
 
         $rows = $groups
             ->reject(fn (array $group) => isset($hidden[self::locationKey($group)]))
             ->map(fn (array $group) => [
+                'detections_table' => $table,
                 'camera_ip' => $group['camera_ip'] ?? null,
                 'camera_name' => $group['camera_name'] ?? null,
                 'godown' => $group['godown'] ?? null,
@@ -143,15 +134,26 @@ class FnsDetectionHistory
     }
 
     /**
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
      * @return array<string, true>
      */
-    private static function hiddenLocationKeys(): array
+    private static function hiddenLocationKeys(string $model): array
     {
         if (! Schema::hasTable('fns_hidden_history_locations')) {
             return [];
         }
 
+        $table = (new $model)->getTable();
+
         return DB::table('fns_hidden_history_locations')
+            ->where(function ($query) use ($table) {
+                $query->where('detections_table', $table);
+
+                // Rows hidden before detections_table existed belong to fns_detections.
+                if ($table === (new FnsDetection)->getTable()) {
+                    $query->orWhereNull('detections_table');
+                }
+            })
             ->get(['camera_ip', 'camera_name', 'godown', 'compartment'])
             ->mapWithKeys(fn ($row) => [self::locationKey((array) $row) => true])
             ->all();
@@ -169,25 +171,28 @@ class FnsDetectionHistory
     }
 
     /**
-     * All external detections, filtered and newest first.
+     * External detections older than the model's first local detection, filtered and newest first.
      *
      * @param  array<string, mixed>  $filters
-     * @return Collection<int, FnsDetection>
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
+     * @return Collection<int, FnsDetection|FnsDetection02>
      */
-    public static function externalDetections(array $filters): Collection
+    public static function externalDetections(array $filters, string $model): Collection
     {
         if (! config('fns.history.enabled') || blank(config('fns.history.url'))) {
             return collect();
         }
 
-
-        $hidden = self::hiddenLocationKeys();
+        $cutoff = $model::query()->min('detected_at');
+        $cutoff = $cutoff ? Carbon::parse($cutoff) : null;
+        $hidden = self::hiddenLocationKeys($model);
 
         return self::cachedAlerts()
+            ->filter(fn (array $alert) => $cutoff === null || $alert['detected_at']->lt($cutoff))
             ->reject(fn (array $alert) => isset($hidden[self::locationKey($alert)]))
             ->filter(fn (array $alert) => self::matches($alert, $filters))
             ->sortByDesc(fn (array $alert) => $alert['detected_at']->getTimestamp() . '.' . str_pad((string) $alert['source_id'], 20, '0', STR_PAD_LEFT))
-            ->map(fn (array $alert) => self::toModel($alert))
+            ->map(fn (array $alert) => self::toModel($alert, $model))
             ->values();
     }
 
@@ -379,10 +384,11 @@ class FnsDetectionHistory
 
     /**
      * @param  array<string, mixed>  $alert
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
      */
-    private static function toModel(array $alert): FnsDetection
+    private static function toModel(array $alert, string $model): FnsDetection|FnsDetection02
     {
-        $detection = new FnsDetection([
+        $detection = new $model([
             'id' => 'ext-' . $alert['source_id'],
             'camera_ip' => $alert['camera_ip'],
             'camera_name' => $alert['camera_name'],
