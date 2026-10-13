@@ -27,6 +27,21 @@ class ReportSummaryTest extends TestCase
             ->assertJsonPath('charts.online_vs_offline_devices.offline', 1);
     }
 
+    public function test_report_summary_uses_current_device_status_for_stale_devices(): void
+    {
+        $this->createReading('DEVICE-1', 'online', now()->subHours(2));
+        $this->createReading('DEVICE-2', 'online', now());
+
+        $this->artisan('devices:mark-stale-offline', ['--minutes' => 30])->assertSuccessful();
+
+        $this->withSession(['admin_id' => 1])
+            ->getJson('/admin/reports/summary')
+            ->assertOk()
+            ->assertJsonPath('stats.total_devices', 2)
+            ->assertJsonPath('stats.online_devices', 1)
+            ->assertJsonPath('stats.offline_devices', 1);
+    }
+
     private function createReading(string $deviceId, string $status, $recordedAt): void
     {
         Reading::create([

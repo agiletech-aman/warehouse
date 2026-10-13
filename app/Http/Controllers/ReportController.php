@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exports\ReportExport;
 use App\Models\Alert;
+use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -26,14 +27,17 @@ class ReportController extends Controller
 
         $totalReadings = (clone $readingsBase)->count();
 
-        // Keep counts consistent with the Devices page: one latest reading per sensor.
-        $devicesQuery = (clone $readingsBase)
-            ->whereNotNull('sensor_device_id')
-            ->whereIn('id', $this->latestDeviceReadingIds());
+        // Count devices from the same projection as the Devices page. Readings keep the status they
+        // arrived with, while devices:mark-stale-offline only updates device_latest_status.
+        $deviceCounts = $this->buildDeviceStatusQuery($filters)
+            ->selectRaw('COUNT(*) AS total')
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'online' THEN 1 ELSE 0 END) AS online")
+            ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'offline' THEN 1 ELSE 0 END) AS offline")
+            ->first();
 
-        $totalDevices = (clone $devicesQuery)->count();
-        $onlineDevices = (clone $devicesQuery)->where('status', 'online')->count();
-        $offlineDevices = (clone $devicesQuery)->where('status', 'offline')->count();
+        $totalDevices = (int) ($deviceCounts->total ?? 0);
+        $onlineDevices = (int) ($deviceCounts->online ?? 0);
+        $offlineDevices = (int) ($deviceCounts->offline ?? 0);
 
         $regionsCount = !empty($filters['region_code']) || !empty($filters['region_name'])
             ? 1
@@ -368,6 +372,66 @@ class ReportController extends Controller
         }
 
         return $alerts->whereNotNull('reading_id')->pluck('reading_id')->unique()->values()->all();
+    }
+
+    /**
+     * Report filters applied to device_latest_status, where each row is already a device's latest reading.
+     */
+    private function buildDeviceStatusQuery(array $filters)
+    {
+        $q = DeviceLatestStatus::query();
+
+        if (!empty($filters['from_date'])) {
+            $q->where('recorded_at', '>=', Carbon::parse($filters['from_date'])->format('Y-m-d') . ' 00:00:00');
+        }
+        if (!empty($filters['to_date'])) {
+            $q->where('recorded_at', '<=', Carbon::parse($filters['to_date'])->format('Y-m-d') . ' 23:59:59');
+        }
+
+        if (!empty($filters['region_code'])) {
+            $q->whereIn('region_code', $this->splitMultiValue($filters['region_code']));
+        }
+        if (!empty($filters['region_name'])) {
+            $q->where('region', $filters['region_name']);
+        }
+
+        if (!empty($filters['warehouse_code'])) {
+            $q->whereIn('warehouse_code', $this->splitMultiValue($filters['warehouse_code']));
+        }
+        if (!empty($filters['warehouse_name'])) {
+            $q->where('warehouse', $filters['warehouse_name']);
+        }
+
+        if (!empty($filters['device_type'])) {
+            $q->where('device_type', $filters['device_type']);
+        }
+        if (!empty($filters['device_code'])) {
+            $q->where('sensor_device_id', $filters['device_code']);
+        }
+        if (!empty($filters['device_name'])) {
+            $q->where('device_name', $filters['device_name']);
+        }
+
+        if (!empty($filters['status'])) {
+            $q->where('status', $filters['status']);
+        }
+        if (!empty($filters['level'])) {
+            $q->whereIn('level', $this->splitMultiValue($filters['level']));
+        }
+
+        switch (strtolower((string) ($filters['report_type'] ?? 'reading'))) {
+            case 'severe_alert':
+                $q->where('level', 'severe');
+                break;
+            case 'critical_alert':
+                $q->where('level', 'critical');
+                break;
+            case 'offline_device':
+                $q->where('status', 'offline');
+                break;
+        }
+
+        return $q;
     }
 
     private function latestDeviceReadingIds()
