@@ -31,9 +31,13 @@ class FnsDetectionRows
      */
     public static function format(Collection $detections, bool $withSnapshotBase64 = false): Collection
     {
+        // History API rows use the API's own image_base64; the snapshot URL is only fetched when it has none yet.
+        $apiImages = $detections
+            ->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')
+            ->mapWithKeys(fn (Model $detection) => [$detection->id => FnsDetectionHistory::imageBase64($detection->getAttribute('source_id'))]);
         $snapshots = self::fetchSnapshots(($withSnapshotBase64
             ? $detections
-            : $detections->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')
+            : $detections->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external' && $apiImages->get($detection->id) === null)
         )->pluck('snapshot_path'));
         $warehouseNames = self::warehouseNamesFor($detections->pluck('warehouse_code'));
         $warehouseNamesByCameraIp = self::warehouseNamesForCameraIps($detections->pluck('camera_ip'));
@@ -41,7 +45,7 @@ class FnsDetectionRows
             $detections->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')->pluck('godown')
         );
 
-        return $detections->map(function (Model $detection) use ($snapshots, $warehouseNames, $warehouseNamesByCameraIp, $warehouseNamesByLocation, $withSnapshotBase64) {
+        return $detections->map(function (Model $detection) use ($apiImages, $snapshots, $warehouseNames, $warehouseNamesByCameraIp, $warehouseNamesByLocation, $withSnapshotBase64) {
             $isExternal = $detection->getAttribute('source') === 'external';
 
             $row = [
@@ -68,7 +72,8 @@ class FnsDetectionRows
                 $row['snapshot_mime_type'] = $mimeType;
                 $row['snapshot_base64'] = $base64;
             } elseif ($isExternal) {
-                $row['image_base64'] = $mimeType ? 'data:' . $mimeType . ';base64,' . $base64 : null;
+                $row['image_base64'] = $apiImages->get($detection->id)
+                    ?? ($mimeType ? 'data:' . $mimeType . ';base64,' . $base64 : null);
             }
 
             return $row;

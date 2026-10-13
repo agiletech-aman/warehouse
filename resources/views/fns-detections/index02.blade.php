@@ -134,7 +134,8 @@
                     orderable: false,
                     searchable: false,
                     render: function (value, type, row) {
-                        return renderSnapshot(value || row.snapshot_url, type);
+                        // History API rows only ever use image_base64; their http URL is never loaded.
+                        return renderSnapshot(row.source === 'external' ? value : row.snapshot_url, type);
                     }
                 },
                 { data: 'bounding_box', render: escapeText },

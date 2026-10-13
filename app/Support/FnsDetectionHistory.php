@@ -21,7 +21,8 @@ use Illuminate\Support\Str;
  */
 class FnsDetectionHistory
 {
-    private const PAGE_BATCH = 10;
+    // Pages carrying image_base64 are ~45MB each, so only a few are downloaded at once.
+    private const PAGE_BATCH = 4;
 
     // The history API rejects pageSize above 500 (it answers with a health check instead of data).
     private const PAGE_SIZE = 500;
@@ -248,6 +249,45 @@ class FnsDetectionHistory
         return $alerts;
     }
 
+    /**
+     * The history API's image_base64 for one alert as a data: URI, or null when the API has none yet.
+     */
+    public static function imageBase64(?string $sourceId): ?string
+    {
+        if (blank($sourceId)) {
+            return null;
+        }
+
+        $image = Cache::store(config('fns.history.cache_store'))->get(self::imageCacheKey($sourceId));
+
+        return is_string($image) && $image !== '' ? $image : null;
+    }
+
+    private static function imageCacheKey(string $sourceId): string
+    {
+        return 'fns_detection_history_image:' . $sourceId;
+    }
+
+    /**
+     * image_base64 as a data: URI; the API may send it with or without the data: prefix.
+     */
+    private static function imageDataUri(mixed $base64): ?string
+    {
+        $base64 = trim((string) $base64);
+
+        if ($base64 === '') {
+            return null;
+        }
+
+        if (Str::startsWith($base64, 'data:')) {
+            return $base64;
+        }
+
+        $mimeType = @getimagesizefromstring((string) base64_decode(substr($base64, 0, 4096), false))['mime'] ?? 'image/jpeg';
+
+        return 'data:' . $mimeType . ';base64,' . $base64;
+    }
+
     private static function cacheKey(): string
     {
         return 'fns_detection_history:v2:' . md5(json_encode([config('fns.history.url'), config('fns.history.alert_types')]));
@@ -262,6 +302,7 @@ class FnsDetectionHistory
     {
         $url = config('fns.history.url');
         $alerts = [];
+        $imageStore = Cache::store(config('fns.history.cache_store'));
 
         try {
             // No configured types means one unfiltered pass over every alert type.
@@ -292,8 +333,17 @@ class FnsDetectionHistory
                         foreach ($data as $row) {
                             $alert = self::normalize($row);
 
-                            if ($alert !== null) {
-                                $alerts[$alert['source_id']] = $alert;
+                            if ($alert === null) {
+                                continue;
+                            }
+
+                            $alerts[$alert['source_id']] = $alert;
+
+                            // Images are kept per alert, outside the list cache, so the list stays small.
+                            $image = self::imageDataUri($row['image_base64'] ?? null);
+
+                            if ($image !== null) {
+                                $imageStore->put(self::imageCacheKey($alert['source_id']), $image, now()->addDays(7));
                             }
                         }
 
@@ -301,6 +351,8 @@ class FnsDetectionHistory
                         if ($data === [] || $p >= (int) $response->json('totalPages', 0)) {
                             $reachedEnd = true;
                         }
+
+                        unset($data, $responses[(string) $p]);
                     }
 
                     if ($reachedEnd) {
@@ -420,6 +472,7 @@ class FnsDetectionHistory
         ]);
 
         $detection->setAttribute('source', 'external');
+        $detection->setAttribute('source_id', $alert['source_id']);
 
         return $detection;
     }
