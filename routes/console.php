@@ -17,9 +17,22 @@ Schedule::command('fns-detections:sync-locations')
     ->everyFiveMinutes()
     ->withoutOverlapping();
 
+Artisan::command('fns-history:refresh', function () {
+    $alerts = \App\Support\FnsDetectionHistory::refreshCache();
+
+    if ($alerts === null) {
+        $this->error('FNS history fetch failed; see the log.');
+
+        return 1;
+    }
+
+    $this->info(count($alerts) . ' history alerts cached.');
+
+    return 0;
+})->purpose('Re-fetch the FNS history API (alerts and their image_base64) into the cache');
+
 // Keep the FNS history API cache (30 min TTL) warm so page loads never wait on the full fetch.
-Schedule::call(fn () => \App\Support\FnsDetectionHistory::refreshCache())
-    ->name('fns-history:refresh-cache')
+Schedule::command('fns-history:refresh')
     ->everyFifteenMinutes()
     ->withoutOverlapping();
 // routes/console.php

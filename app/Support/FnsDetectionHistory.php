@@ -231,13 +231,17 @@ class FnsDetectionHistory
     }
 
     /**
-     * Re-fetch the full history into the cache. A full fetch takes ~25s, so the scheduler
+     * Re-fetch the full history into the cache. A full fetch takes over a minute, so the scheduler
      * keeps the cache warm instead of a page request paying for it.
      *
      * @return array<int, array<string, mixed>>|null  null when the fetch failed
      */
     public static function refreshCache(): ?array
     {
+        // Pages that carry image_base64 make a full fetch take ~1 minute and ~300MB.
+        @ini_set('memory_limit', '1024M');
+        @set_time_limit(300);
+
         $alerts = self::fetchAlerts();
 
         // Do not cache a failed fetch, so the next attempt retries.
