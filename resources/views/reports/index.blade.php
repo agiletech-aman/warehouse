@@ -573,6 +573,11 @@
             getFilters()
         );
 
+        if (!response.ok) {
+            console.error('Report summary failed with status', response.status);
+            return;
+        }
+
         const payload = await response.json();
 
         if (!payload.success) return;

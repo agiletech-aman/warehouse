@@ -415,42 +415,15 @@ class ReportController extends Controller
             $readingsBase = $this->buildReadingsQuery($filters);
         }
 
-        // Build the trend in PHP so this works across MySQL and SQLite.
-        $rows = (clone $readingsBase)
-            ->select(['recorded_at'])
-            ->get();
-
-        $bucketCounts = [];
-        foreach ($rows as $row) {
-            $dt = $row->recorded_at;
-            if (!$dt) continue;
-            $key = match ($bucket) {
-                'week' => $dt->format('o-W'),
-                'month' => $dt->format('Y-m'),
-                default => $dt->format('Y-m-d'),
-            };
-            $bucketCounts[$key] = ($bucketCounts[$key] ?? 0) + 1;
-        }
-
-        ksort($bucketCounts);
+        // Aggregate per day in SQL (DATE() works on MySQL and SQLite), then roll up to the bucket in PHP.
+        // Loading every row here exhausted memory on large tables when no date range was given.
+        $bucketCounts = $this->trendCounts($readingsBase, 'recorded_at', $bucket);
         $labels = array_keys($bucketCounts);
         $readingsCounts = array_values($bucketCounts);
 
         // Alerts trend
         $alertsBase = $this->buildAlertsQuery($filters);
-        $alertRows = (clone $alertsBase)->select(['created_at', 'type'])->get();
-        $alertBucketCounts = [];
-        foreach ($alertRows as $ar) {
-            if (!$ar->created_at) continue;
-            $dt = $ar->created_at;
-            $key = match ($bucket) {
-                'week' => $dt->format('o-W'),
-                'month' => $dt->format('Y-m'),
-                default => $dt->format('Y-m-d'),
-            };
-            $alertBucketCounts[$key] = ($alertBucketCounts[$key] ?? 0) + 1;
-        }
-        ksort($alertBucketCounts);
+        $alertBucketCounts = $this->trendCounts($alertsBase, 'created_at', $bucket);
         $alertsCounts = array_values($alertBucketCounts);
 
         // Level distribution
@@ -461,30 +434,48 @@ class ReportController extends Controller
         ];
 
         // Region wise device count (best-effort from readings: distinct sensor_device_id per region)
-        $regionWise = (clone $readingsBase)
-            ->select(['region_code', 'region', 'sensor_device_id'])
-            ->get();
-
-        $regionDeviceSets = [];
-        foreach ($regionWise as $rr) {
-            $key = ($rr->region_code ?: $rr->region) ?: 'unknown';
-            if (!isset($regionDeviceSets[$key])) {
-                $regionDeviceSets[$key] = [];
-            }
-            if ($rr->sensor_device_id) {
-                $regionDeviceSets[$key][$rr->sensor_device_id] = true;
-            }
-        }
-        $regionDeviceCount = [];
-        foreach ($regionDeviceSets as $key => $set) {
-            $regionDeviceCount[] = ['region' => $key, 'count' => count($set)];
-        }
+        $regionDeviceCount = (clone $readingsBase)
+            ->toBase()
+            ->selectRaw("COALESCE(NULLIF(region_code, ''), NULLIF(region, ''), 'unknown') AS region_key")
+            ->selectRaw("COUNT(DISTINCT NULLIF(sensor_device_id, '')) AS device_count")
+            ->groupBy('region_key')
+            ->get()
+            ->map(fn ($r) => ['region' => $r->region_key, 'count' => (int) $r->device_count])
+            ->all();
 
         return [
             [$labels, $readingsCounts],
-            [array_keys($alertBucketCounts ?? []), $alertsCounts],
+            [array_keys($alertBucketCounts), $alertsCounts],
             $levelDist,
             $regionDeviceCount,
         ];
+    }
+
+    /**
+     * @return array<string, int> bucket label => count, sorted by label
+     */
+    private function trendCounts($query, string $column, string $bucket): array
+    {
+        $days = (clone $query)
+            ->toBase()
+            ->whereNotNull($column)
+            ->selectRaw("DATE({$column}) AS day, COUNT(*) AS total")
+            ->groupBy('day')
+            ->get();
+
+        $counts = [];
+        foreach ($days as $row) {
+            $dt = Carbon::parse($row->day);
+            $key = match ($bucket) {
+                'week' => $dt->format('o-W'),
+                'month' => $dt->format('Y-m'),
+                default => $dt->format('Y-m-d'),
+            };
+            $counts[$key] = ($counts[$key] ?? 0) + (int) $row->total;
+        }
+
+        ksort($counts);
+
+        return $counts;
     }
 }
