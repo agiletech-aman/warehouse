@@ -24,6 +24,9 @@ class FnsDetectionHistory
 {
     private const PAGE_BATCH = 10;
 
+    // The history API rejects pageSize above 500 (it answers with a health check instead of data).
+    private const PAGE_SIZE = 500;
+
     /**
      * Newest-first slice of local + external detections.
      *
@@ -179,18 +182,10 @@ class FnsDetectionHistory
      */
     private static function cachedAlerts(): Collection
     {
-        $store = Cache::store(config('fns.history.cache_store'));
-        $key = 'fns_detection_history:' . md5(json_encode([config('fns.history.url'), config('fns.history.alert_types')]));
-
-        $alerts = $store->get($key);
+        $alerts = Cache::store(config('fns.history.cache_store'))->get(self::cacheKey());
 
         if (! is_array($alerts)) {
-            $alerts = self::fetchAlerts();
-
-            // Do not cache a failed fetch, so the next request retries.
-            if ($alerts !== null) {
-                $store->put($key, $alerts, now()->addMinutes((int) config('fns.history.cache_minutes', 30)));
-            }
+            $alerts = self::refreshCache();
         }
 
         return collect($alerts ?? [])->map(function (array $alert) {
@@ -198,6 +193,30 @@ class FnsDetectionHistory
 
             return $alert;
         });
+    }
+
+    /**
+     * Re-fetch the full history into the cache. A full fetch takes ~25s, so the scheduler
+     * keeps the cache warm instead of a page request paying for it.
+     *
+     * @return array<int, array<string, mixed>>|null  null when the fetch failed
+     */
+    public static function refreshCache(): ?array
+    {
+        $alerts = self::fetchAlerts();
+
+        // Do not cache a failed fetch, so the next attempt retries.
+        if ($alerts !== null) {
+            Cache::store(config('fns.history.cache_store'))
+                ->put(self::cacheKey(), $alerts, now()->addMinutes((int) config('fns.history.cache_minutes', 30)));
+        }
+
+        return $alerts;
+    }
+
+    private static function cacheKey(): string
+    {
+        return 'fns_detection_history:v2:' . md5(json_encode([config('fns.history.url'), config('fns.history.alert_types')]));
     }
 
     /**
@@ -220,7 +239,7 @@ class FnsDetectionHistory
                         fn (int $p) => $pool->as((string) $p)
                             ->timeout(15)
                             ->acceptJson()
-                            ->get($url, ['alert_type' => $alertType, 'page' => $p]),
+                            ->get($url, ['alert_type' => $alertType, 'pageNumber' => $p, 'pageSize' => self::PAGE_SIZE]),
                         $pages,
                     ));
 
@@ -243,7 +262,8 @@ class FnsDetectionHistory
                             }
                         }
 
-                        if ($data === [] || blank($response->json('next_page_url'))) {
+                        // The API pages with pageNumber/totalPages; it has no next_page_url.
+                        if ($data === [] || $p >= (int) $response->json('totalPages', 0)) {
                             $reachedEnd = true;
                         }
                     }

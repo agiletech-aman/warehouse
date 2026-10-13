@@ -16,6 +16,12 @@ Schedule::command('devices:mark-stale-offline --minutes=30')
 Schedule::command('fns-detections:sync-locations')
     ->everyFiveMinutes()
     ->withoutOverlapping();
+
+// Keep the FNS history API cache (30 min TTL) warm so page loads never wait on the full fetch.
+Schedule::call(fn () => \App\Support\FnsDetectionHistory::refreshCache())
+    ->name('fns-history:refresh-cache')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();
 // routes/console.php
 
 Schedule::command('readings:delete-unknown')
