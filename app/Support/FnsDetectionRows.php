@@ -35,10 +35,11 @@ class FnsDetectionRows
         $apiImages = $detections
             ->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')
             ->mapWithKeys(fn (Model $detection) => [$detection->id => FnsDetectionHistory::imageBase64($detection->getAttribute('source_id'))]);
-        $snapshots = self::fetchSnapshots(($withSnapshotBase64
-            ? $detections
-            : $detections->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external' && $apiImages->get($detection->id) === null)
-        )->pluck('snapshot_path'));
+        $snapshots = self::fetchSnapshots($detections
+            ->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external'
+                ? $apiImages->get($detection->id) === null
+                : $withSnapshotBase64)
+            ->pluck('snapshot_path'));
         $warehouseNames = self::warehouseNamesFor($detections->pluck('warehouse_code'));
         $warehouseNamesByCameraIp = self::warehouseNamesForCameraIps($detections->pluck('camera_ip'));
         $warehouseNamesByLocation = self::warehouseNamesForLocations(
@@ -66,13 +67,16 @@ class FnsDetectionRows
                 'source' => $detection->getAttribute('source') ?? 'local',
             ];
 
-            [$mimeType, $base64] = self::encodeSnapshot($snapshots[trim((string) $detection->snapshot_path)] ?? null);
+            $apiImage = $apiImages->get($detection->id);
+            [$mimeType, $base64] = $apiImage !== null
+                ? self::splitDataUri($apiImage)
+                : self::encodeSnapshot($snapshots[trim((string) $detection->snapshot_path)] ?? null);
 
             if ($withSnapshotBase64) {
                 $row['snapshot_mime_type'] = $mimeType;
                 $row['snapshot_base64'] = $base64;
             } elseif ($isExternal) {
-                $row['image_base64'] = $apiImages->get($detection->id)
+                $row['image_base64'] = $apiImage
                     ?? ($mimeType ? 'data:' . $mimeType . ';base64,' . $base64 : null);
             }
 
@@ -300,6 +304,18 @@ class FnsDetectionRows
         }
 
         return [$mimeType, base64_encode($contents)];
+    }
+
+    /**
+     * @return array{0: ?string, 1: ?string}  mime type and Base64 body of a data: URI
+     */
+    private static function splitDataUri(string $dataUri): array
+    {
+        if (! preg_match('/^data:([^;,]+)?(?:;[^,]*)?,(.*)$/s', $dataUri, $matches) || $matches[2] === '') {
+            return [null, null];
+        }
+
+        return [$matches[1] ?: 'image/jpeg', $matches[2]];
     }
 
     private static function warehouseNamesFor(Collection $warehouseCodes): Collection
