@@ -26,14 +26,21 @@ class FnsDetectionRows
     {
         $warehouseNames = self::warehouseNamesFor($detections->pluck('warehouse_code'));
         $warehouseNamesByCameraIp = self::warehouseNamesForCameraIps($detections->pluck('camera_ip'));
+        $warehouseNamesByLocation = self::warehouseNamesForLocations(
+            $detections->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')->pluck('godown')
+        );
 
-        return $detections->map(function (Model $detection) use ($warehouseNames, $warehouseNamesByCameraIp, $withSnapshotBase64) {
+        return $detections->map(function (Model $detection) use ($warehouseNames, $warehouseNamesByCameraIp, $warehouseNamesByLocation, $withSnapshotBase64) {
+            $isExternal = $detection->getAttribute('source') === 'external';
+
             $row = [
                 'id' => $detection->id,
                 'name' => $detection->camera_name ?: '-',
                 'camera_ip' => $detection->camera_ip ?: '-',
                 'warehouse_code' => $detection->warehouse_code ?: '-',
-                'warehouse_name' => self::warehouseName($detection->warehouse_code, $detection->camera_ip, $warehouseNames, $warehouseNamesByCameraIp),
+                'warehouse_name' => $isExternal
+                    ? self::externalWarehouseName($detection->godown, $warehouseNamesByLocation)
+                    : self::warehouseName($detection->warehouse_code, $detection->camera_ip, $warehouseNames, $warehouseNamesByCameraIp),
                 'location' => self::joinParts($detection->godown, $detection->compartment),
                 'detection_type' => $detection->detection_type,
                 'confidence' => $detection->confidence === null ? '-' : round($detection->confidence * 100, 2),
@@ -96,9 +103,14 @@ class FnsDetectionRows
         $groups = $groups->map(fn ($group) => (array) $group);
         $warehouseNames = self::warehouseNamesFor($groups->pluck('warehouse_code'));
         $warehouseNamesByCameraIp = self::warehouseNamesForCameraIps($groups->pluck('camera_ip'));
+        $warehouseNamesByLocation = self::warehouseNamesForLocations(
+            $groups->where('source', 'external')->pluck('godown')
+        );
 
-        return $groups->map(function (array $group) use ($warehouseNames, $warehouseNamesByCameraIp) {
-            $group['warehouse_name'] = self::warehouseName($group['warehouse_code'] ?? null, $group['camera_ip'] ?? null, $warehouseNames, $warehouseNamesByCameraIp);
+        return $groups->map(function (array $group) use ($warehouseNames, $warehouseNamesByCameraIp, $warehouseNamesByLocation) {
+            $group['warehouse_name'] = ($group['source'] ?? 'local') === 'external'
+                ? self::externalWarehouseName($group['godown'] ?? null, $warehouseNamesByLocation)
+                : self::warehouseName($group['warehouse_code'] ?? null, $group['camera_ip'] ?? null, $warehouseNames, $warehouseNamesByCameraIp);
             $group['location'] = self::joinParts($group['godown'] ?? null, $group['compartment'] ?? null);
             $group['key'] = sha1($group['warehouse_name']);
 
@@ -111,6 +123,42 @@ class FnsDetectionRows
         return $warehouseNames->get(self::normalizeWarehouseCode($warehouseCode))
             ?: $warehouseNamesByCameraIp->get($cameraIp)
             ?: '-';
+    }
+
+    /**
+     * History API alerts have no warehouse code and their camera_ip is a stream profile name shared
+     * across sites, so the warehouse comes from the alert's location_name (stored in godown).
+     */
+    private static function externalWarehouseName(?string $locationName, Collection $warehouseNamesByLocation): string
+    {
+        $locationName = trim((string) $locationName);
+
+        if ($locationName === '') {
+            return '-';
+        }
+
+        return $warehouseNamesByLocation->get(strtolower($locationName)) ?: $locationName;
+    }
+
+    /**
+     * Warehouse names keyed by lowercased name, for matching history API location names.
+     */
+    private static function warehouseNamesForLocations(Collection $locationNames): Collection
+    {
+        $names = $locationNames
+            ->map(fn ($name) => strtolower(trim((string) $name)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($names->isEmpty()) {
+            return collect();
+        }
+
+        return Warehouse::withTrashed()
+            ->whereRaw('LOWER(TRIM(warehouse_name)) IN (' . implode(',', array_fill(0, $names->count(), '?')) . ')', $names->all())
+            ->pluck('warehouse_name')
+            ->mapWithKeys(fn (string $name) => [strtolower(trim($name)) => $name]);
     }
 
     /**
