@@ -4,8 +4,11 @@ namespace App\Support;
 
 use App\Models\Warehouse;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
@@ -20,17 +23,25 @@ class FnsDetectionRows
     private const MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024;
 
     /**
+     * History API rows carry their snapshot as a data: URI in image_base64, since those snapshots are plain
+     * http URLs the browser blocks on the https site; local rows keep using snapshot_url.
+     * AI rows get snapshot_mime_type / snapshot_base64 for every row instead.
+     *
      * @param  Collection<int, Model>  $detections
      */
     public static function format(Collection $detections, bool $withSnapshotBase64 = false): Collection
     {
+        $snapshots = self::fetchSnapshots(($withSnapshotBase64
+            ? $detections
+            : $detections->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')
+        )->pluck('snapshot_path'));
         $warehouseNames = self::warehouseNamesFor($detections->pluck('warehouse_code'));
         $warehouseNamesByCameraIp = self::warehouseNamesForCameraIps($detections->pluck('camera_ip'));
         $warehouseNamesByLocation = self::warehouseNamesForLocations(
             $detections->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')->pluck('godown')
         );
 
-        return $detections->map(function (Model $detection) use ($warehouseNames, $warehouseNamesByCameraIp, $warehouseNamesByLocation, $withSnapshotBase64) {
+        return $detections->map(function (Model $detection) use ($snapshots, $warehouseNames, $warehouseNamesByCameraIp, $warehouseNamesByLocation, $withSnapshotBase64) {
             $isExternal = $detection->getAttribute('source') === 'external';
 
             $row = [
@@ -51,8 +62,13 @@ class FnsDetectionRows
                 'source' => $detection->getAttribute('source') ?? 'local',
             ];
 
+            [$mimeType, $base64] = self::encodeSnapshot($snapshots[trim((string) $detection->snapshot_path)] ?? null);
+
             if ($withSnapshotBase64) {
-                [$row['snapshot_mime_type'], $row['snapshot_base64']] = self::snapshotBase64($detection->snapshot_path);
+                $row['snapshot_mime_type'] = $mimeType;
+                $row['snapshot_base64'] = $base64;
+            } elseif ($isExternal) {
+                $row['image_base64'] = $mimeType ? 'data:' . $mimeType . ';base64,' . $base64 : null;
             }
 
             return $row;
@@ -203,38 +219,71 @@ class FnsDetectionRows
     }
 
     /**
-     * Read the snapshot from the public disk (or a legacy external URL) as Base64.
+     * Snapshot file contents keyed by snapshot_path, from the public disk or (in parallel) from external URLs.
      *
-     * @return array{0: ?string, 1: ?string}
+     * @param  Collection<int, ?string>  $snapshotPaths
+     * @return array<string, ?string>
      */
-    private static function snapshotBase64(?string $snapshotPath): array
+    private static function fetchSnapshots(Collection $snapshotPaths): array
     {
-        $snapshotPath = trim((string) $snapshotPath);
+        $paths = $snapshotPaths->map(fn ($path) => trim((string) $path))->filter()->unique()->values();
+        $isUrl = fn (string $path) => Str::startsWith(strtolower($path), ['http://', 'https://']);
+        $contents = [];
 
-        if ($snapshotPath === '') {
-            return [null, null];
-        }
+        foreach ($paths->reject($isUrl) as $path) {
+            $diskPath = ltrim($path, '/');
 
-        $contents = null;
-
-        try {
-            if (Str::startsWith(strtolower($snapshotPath), ['http://', 'https://'])) {
-                $response = Http::timeout(5)->get($snapshotPath);
-                $contents = $response->successful() ? $response->body() : null;
-            } else {
-                $snapshotPath = ltrim($snapshotPath, '/');
-
-                if (Str::startsWith($snapshotPath, 'storage/')) {
-                    $snapshotPath = Str::after($snapshotPath, 'storage/');
-                }
-
-                $disk = Storage::disk('public');
-                $contents = $disk->exists($snapshotPath) ? $disk->get($snapshotPath) : null;
+            if (Str::startsWith($diskPath, 'storage/')) {
+                $diskPath = Str::after($diskPath, 'storage/');
             }
-        } catch (\Throwable) {
-            $contents = null;
+
+            try {
+                $disk = Storage::disk('public');
+                $contents[$path] = $disk->exists($diskPath) ? $disk->get($diskPath) : null;
+            } catch (\Throwable) {
+                $contents[$path] = null;
+            }
         }
 
+        // External snapshots never change, so cache them; failures are cached briefly so an
+        // unreachable image host does not stall every page load.
+        $cache = Cache::store(config('fns.history.cache_store'));
+        $cacheKey = fn (string $url) => 'fns_snapshot:' . sha1($url);
+        $urls = collect();
+
+        foreach ($paths->filter($isUrl) as $url) {
+            $cached = $cache->get($cacheKey($url));
+
+            if ($cached === null) {
+                $urls->push($url);
+            } else {
+                $contents[$url] = $cached === '' ? null : $cached;
+            }
+        }
+
+        if ($urls->isNotEmpty()) {
+            $responses = Http::pool(fn (Pool $pool) => $urls
+                ->map(fn (string $url, int $i) => $pool->as((string) $i)->connectTimeout(2)->timeout(5)->get($url))
+                ->all());
+
+            foreach ($urls as $i => $url) {
+                $response = $responses[(string) $i] ?? null;
+                $body = $response instanceof Response && $response->successful() ? $response->body() : null;
+                $usable = $body !== null && $body !== '' && strlen($body) <= self::MAX_SNAPSHOT_BYTES;
+
+                $cache->put($cacheKey($url), $usable ? $body : '', $usable ? now()->addDay() : now()->addMinutes(10));
+                $contents[$url] = $usable ? $body : null;
+            }
+        }
+
+        return $contents;
+    }
+
+    /**
+     * @return array{0: ?string, 1: ?string}  mime type and Base64 body, or nulls when it is not a usable image
+     */
+    private static function encodeSnapshot(?string $contents): array
+    {
         if ($contents === null || $contents === '' || strlen($contents) > self::MAX_SNAPSHOT_BYTES) {
             return [null, null];
         }

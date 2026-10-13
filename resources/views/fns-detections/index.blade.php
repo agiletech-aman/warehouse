@@ -66,14 +66,17 @@
 
             const snapshotUrl = String(value);
 
-            try {
-                const parsedUrl = new URL(snapshotUrl, window.location.origin);
+            // image_base64 is a data: URI built by the server; anything else must be an http(s) URL.
+            if (!snapshotUrl.startsWith('data:image/')) {
+                try {
+                    const parsedUrl = new URL(snapshotUrl, window.location.origin);
 
-                if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                        return '-';
+                    }
+                } catch (error) {
                     return '-';
                 }
-            } catch (error) {
-                return '-';
             }
 
             if (type !== 'display') {
@@ -127,10 +130,12 @@
                     }
                 },
                 {
-                    data: 'snapshot_url',
+                    data: 'image_base64',
                     orderable: false,
                     searchable: false,
-                    render: renderSnapshot
+                    render: function (value, type, row) {
+                        return renderSnapshot(value || row.snapshot_url, type);
+                    }
                 },
                 { data: 'bounding_box', render: escapeText },
                 { data: 'detected_at', render: escapeText }
