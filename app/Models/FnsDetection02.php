@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\FnsDetectionRows;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
@@ -76,6 +77,7 @@ class FnsDetection02 extends Model
                     ->orWhere('detection_type', 'like', "%{$search}%")
                     ->orWhere('snapshot_path', 'like', "%{$search}%")
                     ->orWhere('bounding_box', 'like', "%{$search}%")
+                    ->when(FnsDetectionRows::searchDateRange($search), fn (Builder $query, array $range) => $query->orWhereBetween('detected_at', $range))
                     ->orWhereExists(function ($warehouseQuery) use ($search) {
                         $warehouseQuery->selectRaw('1')
                             ->from('warehouses')

@@ -342,8 +342,10 @@ class FnsDetectionHistory
         $search = trim((string) ($filters['search'] ?? ''));
 
         if ($search !== '') {
+            $range = FnsDetectionRows::searchDateRange($search);
             $found = collect(['camera_ip', 'camera_name', 'godown', 'compartment', 'detection_type', 'snapshot_path'])
-                ->contains(fn (string $field) => $contains($alert[$field] ?? '', $search));
+                ->contains(fn (string $field) => $contains($alert[$field] ?? '', $search))
+                || ($range !== null && $alert['detected_at']->between($range[0], $range[1]));
 
             if (! $found) {
                 return false;

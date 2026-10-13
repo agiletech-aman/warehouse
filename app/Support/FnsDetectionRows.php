@@ -126,6 +126,47 @@ class FnsDetectionRows
     }
 
     /**
+     * Date or month typed into the detections search box (e.g. "07 Oct 2026", "07-10-2026", "2026-10-07",
+     * "07 Oct 2026 14:30", "Oct 2026") as an inclusive [start, end] detected_at range.
+     *
+     * @return array{0: Carbon, 1: Carbon}|null
+     */
+    public static function searchDateRange(string $search): ?array
+    {
+        $search = preg_replace('/\s+/', ' ', trim($search));
+
+        $formats = [
+            'second' => ['d M Y H:i:s', 'j M Y H:i:s', 'Y-m-d H:i:s', 'd-m-Y H:i:s', 'd/m/Y H:i:s'],
+            'minute' => ['d M Y H:i', 'j M Y H:i', 'Y-m-d H:i', 'd-m-Y H:i', 'd/m/Y H:i'],
+            'day' => ['d M Y', 'j M Y', 'd F Y', 'j F Y', 'Y-m-d', 'd-m-Y', 'j-n-Y', 'd/m/Y', 'j/n/Y', 'd.m.Y'],
+            'month' => ['M Y', 'F Y', 'Y-m', 'm-Y', 'n-Y', 'm/Y', 'n/Y'],
+        ];
+
+        foreach ($formats as $unit => $unitFormats) {
+            foreach ($unitFormats as $format) {
+                if (! Carbon::hasFormat($search, $format)) {
+                    continue;
+                }
+
+                try {
+                    $date = Carbon::createFromFormat('!' . $format, $search);
+                } catch (\Throwable) {
+                    continue;
+                }
+
+                // Reject overflowed dates such as 31-02-2026 that PHP would roll into March.
+                if ($date === null || $date->format($format) !== $search) {
+                    continue;
+                }
+
+                return [$date->copy()->startOf($unit), $date->copy()->endOf($unit)];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * History API alerts have no warehouse code and their camera_ip is a stream profile name shared
      * across sites, so the warehouse comes from the alert's location_name (stored in godown).
      */
