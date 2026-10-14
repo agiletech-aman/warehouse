@@ -47,7 +47,7 @@ class FnsDetectionRows
             $detections->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')->pluck('godown')
         );
 
-        return $detections->map(function (Model $detection) use ($apiImages, $snapshots, $warehouseNames, $warehouseNamesByCameraIp, $warehouseNamesByLocation, $withSnapshotBase64) {
+        $rows = $detections->map(function (Model $detection) use ($apiImages, $snapshots, $warehouseNames, $warehouseNamesByCameraIp, $warehouseNamesByLocation, $withSnapshotBase64) {
             $isExternal = $detection->getAttribute('source') === 'external';
 
             $row = [
@@ -83,6 +83,53 @@ class FnsDetectionRows
 
             return $row;
         })->values();
+
+        // lynk_id / cwc_code come from the warehouse master: by warehouse_code when the row has one, else by name.
+        $warehouses = self::warehouseIdsFor($rows->pluck('warehouse_code'), $rows->pluck('warehouse_name'));
+
+        return $rows->map(function (array $row) use ($warehouses) {
+            $code = self::normalizeWarehouseCode($row['warehouse_code'] === '-' ? '' : $row['warehouse_code']);
+            $warehouse = ($code !== '' ? $warehouses['codes']->get($code) : null)
+                ?? $warehouses['names']->get(strtolower(trim((string) $row['warehouse_name'])));
+
+            return array_slice($row, 0, 4, true) + [
+                'lynk_id' => $warehouse?->lynk_id,
+                'cwc_code' => $warehouse?->cwc_code,
+            ] + $row;
+        });
+    }
+
+    /**
+     * Warehouses keyed by normalized warehouse_code and by lowercased warehouse_name.
+     *
+     * @return array{codes: Collection<string, Warehouse>, names: Collection<string, Warehouse>}
+     */
+    private static function warehouseIdsFor(Collection $warehouseCodes, Collection $warehouseNames): array
+    {
+        $codes = $warehouseCodes->filter(fn ($code) => filled($code) && $code !== '-')
+            ->map(fn ($code) => self::normalizeWarehouseCode($code))->unique()->values();
+        $names = $warehouseNames->filter(fn ($name) => filled($name) && $name !== '-')->unique()->values();
+
+        if ($codes->isEmpty() && $names->isEmpty()) {
+            return ['codes' => collect(), 'names' => collect()];
+        }
+
+        $warehouses = Warehouse::withTrashed()
+            ->where(function ($query) use ($codes, $names) {
+                if ($codes->isNotEmpty()) {
+                    $query->orWhereRaw("UPPER(REPLACE(TRIM(warehouse_code), '-', '')) IN (" . implode(',', array_fill(0, $codes->count(), '?')) . ')', $codes->all());
+                }
+
+                if ($names->isNotEmpty()) {
+                    $query->orWhereIn('warehouse_name', $names);
+                }
+            })
+            ->get(['warehouse_code', 'warehouse_name', 'lynk_id', 'cwc_code']);
+
+        return [
+            'codes' => $warehouses->keyBy(fn (Warehouse $warehouse) => self::normalizeWarehouseCode($warehouse->warehouse_code)),
+            'names' => $warehouses->keyBy(fn (Warehouse $warehouse) => strtolower(trim((string) $warehouse->warehouse_name))),
+        ];
     }
 
     /**
