@@ -42,6 +42,52 @@ class ReportSummaryTest extends TestCase
             ->assertJsonPath('stats.offline_devices', 1);
     }
 
+    public function test_report_summary_counts_readings_and_distinct_locations_in_one_response(): void
+    {
+        $this->createReading('DEVICE-1', 'online', now());
+        $this->createReading('DEVICE-2', 'online', now());
+
+        Reading::create([
+            'sensor_device_id' => 'DEVICE-3',
+            'device_name' => 'DEVICE-3',
+            'device_type' => 'temperature',
+            'region' => 'South',
+            'region_code' => '',
+            'warehouse' => 'Warehouse B',
+            'warehouse_code' => null,
+            'reading_value' => 20,
+            'unit' => 'C',
+            'level' => 'normal',
+            'status' => 'online',
+            'recorded_at' => now(),
+        ]);
+
+        $this->withSession(['admin_id' => 1])
+            ->getJson('/admin/reports/summary')
+            ->assertOk()
+            ->assertJsonPath('stats.total_readings', 3)
+            ->assertJsonPath('stats.regions_count', 2)
+            ->assertJsonPath('stats.warehouses_count', 2);
+    }
+
+    public function test_report_summary_builds_trend_charts_only_when_requested(): void
+    {
+        $this->createReading('DEVICE-1', 'online', now());
+
+        $this->withSession(['admin_id' => 1])
+            ->getJson('/admin/reports/summary')
+            ->assertOk()
+            ->assertJsonMissingPath('charts.readings_trend')
+            ->assertJsonPath('charts.online_vs_offline_devices.online', 1);
+
+        $this->withSession(['admin_id' => 1])
+            ->getJson('/admin/reports/summary?include_charts=1')
+            ->assertOk()
+            ->assertJsonPath('charts.level_distribution.normal', 1)
+            ->assertJsonPath('charts.region_wise_device_count.0.region', 'NORTH')
+            ->assertJsonPath('charts.online_vs_offline_devices.online', 1);
+    }
+
     private function createReading(string $deviceId, string $status, $recordedAt): void
     {
         Reading::create([

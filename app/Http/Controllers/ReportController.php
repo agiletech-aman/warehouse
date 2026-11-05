@@ -8,7 +8,6 @@ use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
 
@@ -23,9 +22,15 @@ class ReportController extends Controller
     {
         $filters = $this->extractFilters($request);
 
-        $readingsBase = $this->buildReadingsQuery($filters);
+        // One scan for all reading stats: this request has to finish inside PHP-FPM's 60s limit.
+        $readingStats = $this->buildReadingsQuery($filters)
+            ->toBase()
+            ->selectRaw('COUNT(*) AS total')
+            ->selectRaw($this->distinctLocationSql('region_code', 'region') . ' AS regions')
+            ->selectRaw($this->distinctLocationSql('warehouse_code', 'warehouse') . ' AS warehouses')
+            ->first();
 
-        $totalReadings = (clone $readingsBase)->count();
+        $totalReadings = (int) ($readingStats->total ?? 0);
 
         // Count devices from the same projection as the Devices page. Readings keep the status they
         // arrived with, while devices:mark-stale-offline only updates device_latest_status.
@@ -41,23 +46,35 @@ class ReportController extends Controller
 
         $regionsCount = !empty($filters['region_code']) || !empty($filters['region_name'])
             ? 1
-            : $this->distinctLocationCount($readingsBase, 'region_code', 'region');
+            : (int) ($readingStats->regions ?? 0);
 
         $warehousesCount = !empty($filters['warehouse_code']) || !empty($filters['warehouse_name'])
             ? 1
-            : $this->distinctLocationCount($readingsBase, 'warehouse_code', 'warehouse');
+            : (int) ($readingStats->warehouses ?? 0);
 
         // Severe/Critical alerts counts: prefer Alert.type filters within date range.
         $alertsBase = $this->buildAlertsQuery($filters);
         $severeAlerts = (clone $alertsBase)->where('type', 'severe')->count();
         $criticalAlerts = (clone $alertsBase)->where('type', 'critical')->count();
 
-        // Chart datasets
-        [$readingsTrend, $alertsTrend, $levelDistribution, $regionDeviceCounts] = $this->buildCharts($filters);
-        $onlineVsOffline = [
-            'online' => $onlineDevices,
-            'offline' => $offlineDevices,
+        $charts = [
+            'online_vs_offline_devices' => [
+                'online' => $onlineDevices,
+                'offline' => $offlineDevices,
+            ],
         ];
+
+        // The trend charts rescan readings several times and the reports page does not use them, so they are opt-in.
+        if ($request->boolean('include_charts')) {
+            [$readingsTrend, $alertsTrend, $levelDistribution, $regionDeviceCounts] = $this->buildCharts($filters);
+
+            $charts += [
+                'readings_trend' => $readingsTrend,
+                'alerts_trend' => $alertsTrend,
+                'region_wise_device_count' => $regionDeviceCounts,
+                'level_distribution' => $levelDistribution,
+            ];
+        }
 
         return response()->json([
             'success' => true,
@@ -71,13 +88,7 @@ class ReportController extends Controller
                 'regions_count' => $regionsCount,
                 'warehouses_count' => $warehousesCount,
             ],
-            'charts' => [
-                'readings_trend' => $readingsTrend,
-                'alerts_trend' => $alertsTrend,
-                'online_vs_offline_devices' => $onlineVsOffline,
-                'region_wise_device_count' => $regionDeviceCounts,
-                'level_distribution' => $levelDistribution,
-            ],
+            'charts' => $charts,
         ]);
     }
 
@@ -439,16 +450,9 @@ class ReportController extends Controller
         return Reading::latestIdsPerSensor();
     }
 
-    private function distinctLocationCount($query, string $codeColumn, string $nameColumn): int
+    private function distinctLocationSql(string $codeColumn, string $nameColumn): string
     {
-        $locations = (clone $query)
-            ->selectRaw("COALESCE(NULLIF(TRIM({$codeColumn}), ''), NULLIF(TRIM({$nameColumn}), '')) AS location_key")
-            ->distinct();
-
-        return DB::query()
-            ->fromSub($locations, 'locations')
-            ->whereNotNull('location_key')
-            ->count();
+        return "COUNT(DISTINCT COALESCE(NULLIF(TRIM({$codeColumn}), ''), NULLIF(TRIM({$nameColumn}), '')))";
     }
 
     private function buildCharts(array $filters): array
