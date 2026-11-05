@@ -17,6 +17,8 @@ class MasterAlertService
 
     private const ALERT_TYPES = ['normal', 'severe', 'critical'];
 
+    private const ALERT_WINDOW_DAYS = 30;
+
     public function fetchDevices(array $filters): array
     {
         $page = max(1, (int) ($filters['pageNumber'] ?? 1));
@@ -129,8 +131,10 @@ class MasterAlertService
         $pageSize = max(1, (int) ($filters['pageSize'] ?? 20));
         $deviceTypeId = isset($filters['deviceTypeId']) ? (int) $filters['deviceTypeId'] : null;
 
+        // Hard limit: an older fromDate cannot widen this window.
         $query = Reading::query()
-            ->whereRaw('LOWER(device_type) IN (?, ?)', ['co2', 'ph3']);
+            ->whereRaw('LOWER(device_type) IN (?, ?)', ['co2', 'ph3'])
+            ->where('recorded_at', '>=', now()->subDays(self::ALERT_WINDOW_DAYS));
 
         if ($deviceTypeId !== null) {
             $deviceType = $deviceTypeId === self::DEVICE_PH3 ? 'ph3' : 'co2';

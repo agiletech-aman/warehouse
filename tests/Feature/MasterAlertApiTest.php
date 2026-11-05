@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Alert;
 use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
@@ -126,32 +127,63 @@ class MasterAlertApiTest extends TestCase
             'status' => 'active',
         ]);
 
+        $recordedAt = now()->subDays(5)->setTime(12, 0);
+        $filterDate = urlencode($recordedAt->format('d/m/Y'));
+
         $matching = $this->createReading('co2', 'severe');
         $matching->update([
             'region' => 'BHUBANESWAR',
             'region_code' => 'RE-BHU',
             'warehouse' => 'TEST LOCATION',
             'warehouse_code' => 'WH-TEST',
-            'recorded_at' => '2026-07-15 12:00:00',
+            'recorded_at' => $recordedAt,
         ]);
 
         $this->createReading('ph3', 'critical', 1)->update([
             'region' => 'BHUBANESWAR',
             'warehouse' => 'OTHER LOCATION',
-            'recorded_at' => '2026-07-15 12:00:00',
+            'recorded_at' => $recordedAt,
         ]);
 
         $this->getJson(
             "/api/master-alerts?state={$region->id}"
             ."&location={$warehouse->id}"
             .'&alert_type=SEVERE'
-            .'&from_date=15%2F07%2F2026'
-            .'&to_date=15%2F07%2F2026'
+            ."&from_date={$filterDate}"
+            ."&to_date={$filterDate}"
         )
             ->assertOk()
             ->assertJsonPath('totalCount', 1)
             ->assertJsonPath('data.0.id', $matching->id)
             ->assertJsonPath('data.0.alertType', 'SEVERE');
+    }
+
+    public function test_master_alerts_only_return_the_last_30_days_even_with_older_from_date(): void
+    {
+        $recent = $this->createReading('co2', 'severe');
+        $recent->update(['recorded_at' => now()->subDays(29)]);
+        $this->createReading('co2', 'critical', 1)->update(['recorded_at' => now()->subDays(31)]);
+
+        $fromDate = now()->subDays(60)->format('Y-m-d');
+
+        $this->getJson("/api/master-alerts?from_date={$fromDate}")
+            ->assertOk()
+            ->assertJsonPath('totalCount', 1)
+            ->assertJsonPath('data.0.id', $recent->id);
+    }
+
+    public function test_alerts_api_only_returns_the_last_30_days_even_with_older_start_date(): void
+    {
+        $recent = $this->createAlert(now()->subDays(29));
+        $this->createAlert(now()->subDays(31));
+
+        $startDate = now()->subDays(60)->format('Y-m-d');
+
+        $this->getJson("/api/alerts?start_date={$startDate}")
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('active_count', 1)
+            ->assertJsonPath('data.0.id', $recent->id);
     }
 
     public function test_locations_preserve_roman_numerals_in_warehouse_names(): void
@@ -352,6 +384,23 @@ class MasterAlertApiTest extends TestCase
             ->assertJsonPath('data.0.location', 'N/A');
 
         $this->assertNotContains(null, $response->json('data.0'), true);
+    }
+
+    private function createAlert(\DateTimeInterface $createdAt): Alert
+    {
+        $alert = new Alert;
+        $alert->forceFill([
+            'device_id' => 'CO2-TEST',
+            'alert_type' => 'threshold',
+            'alert_value' => 10,
+            'type' => 'severe',
+            'message' => 'Test alert',
+            'active' => true,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ])->save();
+
+        return $alert;
     }
 
     private function createReading(string $deviceType, string $level, int $offset = 0): Reading

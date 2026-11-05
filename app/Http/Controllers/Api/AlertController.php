@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 
 class AlertController extends Controller
 {
+    private const ALERT_WINDOW_DAYS = 30;
+
     public function index(Request $request)
     {
         $perPage = (int) $request->query('per_page', 15);
@@ -30,7 +32,10 @@ class AlertController extends Controller
         $startDate = $request->query('start_date'); // YYYY-MM-DD
         $endDate = $request->query('end_date');     // YYYY-MM-DD
 
-        $base = Alert::query()->whereNull('deleted_at');
+        // Hard limit: an older start_date cannot widen this window.
+        $base = Alert::query()
+            ->whereNull('deleted_at')
+            ->where('created_at', '>=', now()->subDays(self::ALERT_WINDOW_DAYS));
 
         if ($active !== null) {
             $activeBool = in_array(strtolower((string) $active), ['1', 'true'], true);
