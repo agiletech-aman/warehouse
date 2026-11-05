@@ -24,8 +24,7 @@ class MasterAlertService
         $page = max(1, (int) ($filters['pageNumber'] ?? 1));
         $pageSize = max(1, min((int) ($filters['pageSize'] ?? 20), 500));
 
-        $query = Reading::query()
-            ->whereIn('id', Reading::latestIdsPerSensor())
+        $query = DeviceLatestStatus::query()
             ->whereRaw('LOWER(device_type) IN (?, ?)', ['co2', 'ph3']);
 
         if (isset($filters['deviceTypeId'])) {
@@ -84,7 +83,7 @@ class MasterAlertService
             ->whereIn('sensor_device_id', $readings->pluck('sensor_device_id')->filter()->unique()->values())
             ->pluck('status', 'sensor_device_id');
 
-        $data = $readings->map(function (Reading $reading) use ($currentStatuses) {
+        $data = $readings->map(function ($reading) use ($currentStatuses) {
             $location = collect([$reading->godown, $reading->compartment])
                 ->filter(fn ($part) => $part !== null && $part !== '')
                 ->implode(' / ');
