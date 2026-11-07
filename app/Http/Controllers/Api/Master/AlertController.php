@@ -34,7 +34,7 @@ class AlertController extends Controller
 
     public function summaryApi(Request $request, MasterAlertSummaryService $summaryService): JsonResponse
     {
-        return response()->json($this->getSummary($request, $summaryService));
+        return response()->json(\Illuminate\Support\Facades\Cache::remember("summary_" . md5(json_encode([$request->query(), auth()->id()])), 300, fn () => $this->getSummary($request, $summaryService)));
     }
 
     public function storeSummaryApi(Request $request): JsonResponse
@@ -209,14 +209,15 @@ public function statesApi(): JsonResponse
         $page = max(1, (int) $request->get('pageNumber', $request->get('page', 1)));
         $pageSize = max(1, min((int) $request->get('pageSize', 20), 500));
 
-        $response = $alertService->fetchDevices([
+        $__p = [
             'pageNumber' => $page,
             'pageSize' => $pageSize,
             'deviceTypeId' => $deviceTypeId !== null ? (int) $deviceTypeId : null,
             'warehouseName' => $warehouse?->warehouse_name,
             'warehouseCode' => $warehouse?->warehouse_code,
             'accessibleWarehouseNames' => $this->accessibleWarehouseNames(),
-        ]);
+        ];
+        $response = \Illuminate\Support\Facades\Cache::remember("devices_" . md5(json_encode($__p)), 300, fn () => $alertService->fetchDevices($__p));
 
         return response()->json([
             'data' => $response['data'],

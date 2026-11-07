@@ -188,7 +188,7 @@ class ReportController extends Controller
         $fileName = 'reports_' . date('Ymd_His');
 
         if ($format === 'excel') {
-            return Excel::download($export, $fileName . '.xlsx');
+            return \App\Exports\ReportStreamExport::download($export, $fileName);
         }
 
         // CSV
@@ -447,7 +447,7 @@ class ReportController extends Controller
 
     private function latestDeviceReadingIds()
     {
-        return Reading::latestIdsPerSensor();
+        return Reading::latestIdsPerSensor()->get()->flatMap(fn ($r) => array_values((array) $r))->all();
     }
 
     private function distinctLocationSql(string $codeColumn, string $nameColumn): string

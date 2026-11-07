@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -47,13 +48,22 @@ class MasterAlertSummaryService
     public function fetchSummary(): array
     {
         $overall = [];
+        foreach (['CO2', 'PH3'] as $p) {
+            foreach (['Normal', 'Severe', 'Critical'] as $l) {
+                $overall["total{$l}{$p}"] = 0;
+            }
+        }
 
-        foreach (['CO2' => 'co2', 'PH3' => 'ph3'] as $prefix => $deviceType) {
-            $query = Reading::query()->whereRaw('LOWER(device_type) = ?', [$deviceType]);
+        $rows = Reading::query()->toBase()
+            ->selectRaw('device_type, level, COUNT(*) as c')
+            ->groupBy('device_type', 'level')
+            ->get();
 
-            $overall["totalNormal{$prefix}"] = (clone $query)->where('level', 'normal')->count();
-            $overall["totalSevere{$prefix}"] = (clone $query)->where('level', 'severe')->count();
-            $overall["totalCritical{$prefix}"] = (clone $query)->where('level', 'critical')->count();
+        foreach ($rows as $row) {
+            $key = 'total' . ucfirst(strtolower(trim((string) $row->level))) . strtoupper(trim((string) $row->device_type));
+            if (isset($overall[$key])) {
+                $overall[$key] += (int) $row->c;
+            }
         }
 
         return ['overall' => $overall];
@@ -63,14 +73,13 @@ class MasterAlertSummaryService
     {
         $gas = $this->gasSql();
 
-        $base = Reading::query()
-            ->whereIn('id', Reading::latestIdsPerSensor())
+        $base = DeviceLatestStatus::query()
             ->whereRaw("{$gas} IN (?, ?)", ['co2', 'ph3']);
         $this->applyFilters($base, $filters);
 
         // Reading rows keep the status they were recorded with; the stale
         // device cron only updates the current-status projection.
-        $status = "LOWER(COALESCE((SELECT dls.status FROM device_latest_status dls WHERE dls.sensor_device_id = readings.sensor_device_id), readings.status, ''))";
+        $status = "LOWER(COALESCE(status, ''))";
         $severity = "CASE WHEN LOWER(COALESCE(level, '')) IN ('severe', 'critical') THEN LOWER(level) ELSE 'normal' END";
 
         $overall = (clone $base)
