@@ -21,12 +21,12 @@ class FnsDetectionController extends Controller
 {
     public function index(): View
     {
-        return view('fns-detections.index', ['detectionTypes' => FnsDetectionRows::detectionTypes()]);
+        return view('fns-detections.index', ['detectionTypes' => FnsDetectionRows::detectionTypes(FnsDetection::class)]);
     }
 
     public function index02(): View
     {
-        return view('fns-detections.index02', ['detectionTypes' => FnsDetectionRows::detectionTypes()]);
+        return view('fns-detections.index02', ['detectionTypes' => FnsDetectionRows::detectionTypes(FnsDetection02::class)]);
     }
 
     public function data(Request $request): JsonResponse

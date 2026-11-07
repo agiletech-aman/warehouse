@@ -133,22 +133,6 @@ class FnsDetectionHistory
     }
 
     /**
-     * Alert types in the cached history. Never fetches, so a cold cache cannot stall the page.
-     *
-     * @return array<int, string>
-     */
-    public static function cachedDetectionTypes(): array
-    {
-        if (! self::historyEnabled()) {
-            return [];
-        }
-
-        $alerts = Cache::store(config('fns.history.cache_store'))->get(self::cacheKey());
-
-        return is_array($alerts) ? array_values(array_unique(array_column($alerts, 'detection_type'))) : [];
-    }
-
-    /**
      * Count of all external detections (unfiltered).
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model

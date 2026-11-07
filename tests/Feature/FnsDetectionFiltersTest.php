@@ -97,6 +97,22 @@ class FnsDetectionFiltersTest extends TestCase
         $this->assertStringContainsString(url('/storage/snapshots/a.jpg'), $csv);
     }
 
+    public function test_detection_type_options_come_from_the_pages_own_table(): void
+    {
+        $this->detection('RODENT', 'WH-01', '2026-10-05 10:00:00');
+        $this->detection('rodent', 'WH-01', '2026-10-05 11:00:00');
+        FnsDetection02::create($this->attributes('smoke', 'WH-02', '2026-10-05 10:00:00', 'Camera'));
+
+        $page = $this->withSession($this->session)->get('/fns/detections')->assertOk();
+        $this->assertSame(1, substr_count($page->getContent(), '<option value="rodent">Rodent</option>'));
+        $page->assertDontSee('<option value="smoke">', false)->assertDontSee('<option value="weapon">', false);
+
+        $this->withSession($this->session)->get('/fns/detections02')
+            ->assertOk()
+            ->assertSee('<option value="smoke">Smoke</option>', false)
+            ->assertDontSee('<option value="rodent">', false);
+    }
+
     public function test_invalid_filter_values_are_ignored(): void
     {
         $this->detection('fire', 'WH-01', '2026-10-05 10:00:00');

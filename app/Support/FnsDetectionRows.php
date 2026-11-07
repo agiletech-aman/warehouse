@@ -24,9 +24,6 @@ class FnsDetectionRows
 {
     private const MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024;
 
-    // Detection types the push APIs accept; history API alerts can add their own.
-    private const DETECTION_TYPES = ['person', 'fire', 'smoke', 'weapon', 'intrusion', 'rodent'];
-
     /**
      * History API rows carry their snapshot as a data: URI in image_base64, since those snapshots are plain
      * http URLs the browser blocks on the https site; local rows keep using snapshot_url.
@@ -106,14 +103,17 @@ class FnsDetectionRows
     }
 
     /**
-     * Options for the detection type filter.
+     * Options for the detection type filter: the types stored in this model's table.
      *
+     * @param  class-string<Model>  $model
      * @return array<int, string>
      */
-    public static function detectionTypes(): array
+    public static function detectionTypes(string $model): array
     {
-        return collect(self::DETECTION_TYPES)
-            ->concat(FnsDetectionHistory::cachedDetectionTypes())
+        return $model::query()
+            ->distinct()
+            ->pluck('detection_type')
+            ->map(fn ($type) => strtolower(trim((string) $type)))
             ->filter()
             ->unique()
             ->sort()
