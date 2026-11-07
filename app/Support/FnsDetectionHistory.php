@@ -86,6 +86,69 @@ class FnsDetectionHistory
     }
 
     /**
+     * Every local + external detection, newest first in the same order as slice(), one chunk at a time.
+     *
+     * @param  Builder<FnsDetection|FnsDetection02>  $query  Local query with filters already applied.
+     * @param  array<string, mixed>  $filters
+     * @return \Generator<int, Collection<int, FnsDetection|FnsDetection02>>
+     */
+    public static function chunks(Builder $query, array $filters, int $size = 500): \Generator
+    {
+        $model = get_class($query->getModel());
+        $external = self::externalAlerts($filters, $model);
+        $e = 0;
+        $chunk = collect();
+
+        foreach ((clone $query)->latest('detected_at')->latest('id')->lazy($size) as $local) {
+            // Same tie rule as slice(): a local row goes first when the times are equal.
+            while ($e < $external->count() && $external[$e]['detected_at']->gt($local->detected_at)) {
+                $chunk->push(self::toModel($external[$e++], $model));
+
+                if ($chunk->count() >= $size) {
+                    yield $chunk;
+                    $chunk = collect();
+                }
+            }
+
+            $chunk->push($local);
+
+            if ($chunk->count() >= $size) {
+                yield $chunk;
+                $chunk = collect();
+            }
+        }
+
+        while ($e < $external->count()) {
+            $chunk->push(self::toModel($external[$e++], $model));
+
+            if ($chunk->count() >= $size) {
+                yield $chunk;
+                $chunk = collect();
+            }
+        }
+
+        if ($chunk->isNotEmpty()) {
+            yield $chunk;
+        }
+    }
+
+    /**
+     * Alert types in the cached history. Never fetches, so a cold cache cannot stall the page.
+     *
+     * @return array<int, string>
+     */
+    public static function cachedDetectionTypes(): array
+    {
+        if (! self::historyEnabled()) {
+            return [];
+        }
+
+        $alerts = Cache::store(config('fns.history.cache_store'))->get(self::cacheKey());
+
+        return is_array($alerts) ? array_values(array_unique(array_column($alerts, 'detection_type'))) : [];
+    }
+
+    /**
      * Count of all external detections (unfiltered).
      *
      * @param  class-string<FnsDetection|FnsDetection02>  $model
@@ -454,6 +517,13 @@ class FnsDetectionHistory
             if ($value !== '' && ! $contains($alert[$field] ?? '', $value)) {
                 return false;
             }
+        }
+
+        // An external alert's warehouse is its location name, stored in godown.
+        $warehouse = trim((string) ($filters['warehouse'] ?? ''));
+
+        if ($warehouse !== '' && ! $contains($alert['godown'] ?? '', $warehouse)) {
+            return false;
         }
 
         // External alerts carry no warehouse code or confidence, so these filters exclude them.

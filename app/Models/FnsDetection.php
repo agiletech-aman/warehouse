@@ -95,6 +95,12 @@ class FnsDetection extends Model
             }
         }
 
+        $warehouse = trim((string) ($filters['warehouse'] ?? ''));
+
+        if ($warehouse !== '') {
+            FnsDetectionRows::applyWarehouseFilter($query, $warehouse);
+        }
+
         if (! empty($filters['detection_type'])) {
             $query->where('detection_type', $filters['detection_type']);
         }

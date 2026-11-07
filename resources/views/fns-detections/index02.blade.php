@@ -10,10 +10,17 @@
                 <h3 class="mb-1">FNS Detections</h3>
                 <p class="text-muted mb-0">Monitor camera detections across warehouses.</p>
             </div>
-            <a href="{{ route('fns-detections02.locations') }}" class="btn btn-primary rounded-pill px-3">
-                Detection Locations
-            </a>
+            <div class="d-flex flex-wrap gap-2">
+                <a id="fnsDetectionsExport" href="{{ route('fns-detections02.export') }}" class="btn btn-outline-primary rounded-pill px-3">
+                    Export
+                </a>
+                <a href="{{ route('fns-detections02.locations') }}" class="btn btn-primary rounded-pill px-3">
+                    Detection Locations
+                </a>
+            </div>
         </div>
+
+        @include('fns-detections.partials.filters')
 
         <div class="table-responsive">
             <table id="fnsDetectionsTable" class="table table-hover align-middle mb-0 w-100">
@@ -52,6 +59,7 @@
 @endsection
 
 @section('scripts')
+@include('fns-detections.partials.filters-script')
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const escapeText = function (value) {
@@ -92,7 +100,7 @@
                 + '</button>';
         };
 
-        window.initWarehouseDataTable('#fnsDetectionsTable', {
+        const table = window.initWarehouseDataTable('#fnsDetectionsTable', {
             processing: true,
             serverSide: true,
             paging: true,
@@ -103,7 +111,10 @@
                 search: 'Search detections:'
             },
             ajax: {
-                url: '{{ route('fns-detections02.data') }}'
+                url: '{{ route('fns-detections02.data') }}',
+                data: function (params) {
+                    Object.assign(params, window.fnsDetectionFilters.values());
+                }
             },
             columns: [
                 { data: 'name', render: escapeText },
@@ -142,6 +153,8 @@
                 { data: 'detected_at', render: escapeText }
             ]
         });
+
+        window.fnsDetectionFilters.bind(table);
 
         $('#fnsDetectionsTable').on('click', '.js-detection-snapshot', function () {
             const modalImage = document.getElementById('detectionSnapshotModalImage');

@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Warehouse;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
@@ -23,20 +24,25 @@ class FnsDetectionRows
 {
     private const MAX_SNAPSHOT_BYTES = 5 * 1024 * 1024;
 
+    // Detection types the push APIs accept; history API alerts can add their own.
+    private const DETECTION_TYPES = ['person', 'fire', 'smoke', 'weapon', 'intrusion', 'rodent'];
+
     /**
      * History API rows carry their snapshot as a data: URI in image_base64, since those snapshots are plain
      * http URLs the browser blocks on the https site; local rows keep using snapshot_url.
      * AI rows get snapshot_mime_type / snapshot_base64 for every row instead.
      *
+     * Exports pass $withImages = false, so no image is read or downloaded for any row.
+     *
      * @param  Collection<int, Model>  $detections
      */
-    public static function format(Collection $detections, bool $withSnapshotBase64 = false): Collection
+    public static function format(Collection $detections, bool $withSnapshotBase64 = false, bool $withImages = true): Collection
     {
         // History API rows use the API's own image_base64; the snapshot URL is only fetched when it has none yet.
-        $apiImages = $detections
+        $apiImages = ! $withImages ? collect() : $detections
             ->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external')
             ->mapWithKeys(fn (Model $detection) => [$detection->id => FnsDetectionHistory::imageBase64($detection->getAttribute('source_id'))]);
-        $snapshots = self::fetchSnapshots($detections
+        $snapshots = ! $withImages ? [] : self::fetchSnapshots($detections
             ->filter(fn (Model $detection) => $detection->getAttribute('source') === 'external'
                 ? $apiImages->get($detection->id) === null
                 : $withSnapshotBase64)
@@ -96,6 +102,59 @@ class FnsDetectionRows
                 'lynk_id' => $warehouse?->lynk_id,
                 'cwc_code' => $warehouse?->cwc_code,
             ] + $row;
+        });
+    }
+
+    /**
+     * Options for the detection type filter.
+     *
+     * @return array<int, string>
+     */
+    public static function detectionTypes(): array
+    {
+        return collect(self::DETECTION_TYPES)
+            ->concat(FnsDetectionHistory::cachedDetectionTypes())
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Limit local detections to a warehouse code or name, using the same code / camera IP
+     * lookups that resolve the warehouse shown on each row.
+     *
+     * @param  Builder<Model>  $query
+     */
+    public static function applyWarehouseFilter(Builder $query, string $warehouse): void
+    {
+        $table = $query->getModel()->getTable();
+        $like = '%' . $warehouse . '%';
+
+        $query->where(function (Builder $query) use ($table, $like) {
+            $query->where('warehouse_code', 'like', $like)
+                ->orWhereExists(function ($warehouseQuery) use ($table, $like) {
+                    $warehouseQuery->selectRaw('1')
+                        ->from('warehouses')
+                        ->whereRaw("UPPER(REPLACE(TRIM(warehouses.warehouse_code), '-', '')) = UPPER(REPLACE(TRIM({$table}.warehouse_code), '-', ''))")
+                        ->where('warehouses.warehouse_name', 'like', $like);
+                });
+
+            if (Schema::hasTable('devices')) {
+                $query->orWhereIn('camera_ip', fn ($deviceQuery) => $deviceQuery
+                    ->select('devices.ip_address')
+                    ->from('devices')
+                    ->join('warehouses', 'warehouses.id', '=', 'devices.warehouse_id')
+                    ->where('warehouses.warehouse_name', 'like', $like));
+            }
+
+            if (Schema::hasTable('device_latest_status')) {
+                $query->orWhereIn('camera_ip', fn ($statusQuery) => $statusQuery
+                    ->select('device_ip')
+                    ->from('device_latest_status')
+                    ->where('warehouse', 'like', $like));
+            }
         });
     }
 

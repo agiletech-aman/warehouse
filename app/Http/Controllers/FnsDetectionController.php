@@ -15,17 +15,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FnsDetectionController extends Controller
 {
     public function index(): View
     {
-        return view('fns-detections.index');
+        return view('fns-detections.index', ['detectionTypes' => FnsDetectionRows::detectionTypes()]);
     }
 
     public function index02(): View
     {
-        return view('fns-detections.index02');
+        return view('fns-detections.index02', ['detectionTypes' => FnsDetectionRows::detectionTypes()]);
     }
 
     public function data(Request $request): JsonResponse
@@ -36,6 +37,16 @@ class FnsDetectionController extends Controller
     public function data02(Request $request): JsonResponse
     {
         return $this->dataTable($request, FnsDetection02::class);
+    }
+
+    public function export(Request $request): StreamedResponse
+    {
+        return $this->exportCsv($request, FnsDetection::class, 'fns-detections');
+    }
+
+    public function export02(Request $request): StreamedResponse
+    {
+        return $this->exportCsv($request, FnsDetection02::class, 'fns-detections-02');
     }
 
     public function locations(): View
@@ -191,9 +202,7 @@ class FnsDetectionController extends Controller
             $length = 10;
         }
 
-        $filters = [
-            'search' => data_get($request->query('search', []), 'value', ''),
-        ];
+        $filters = $this->filters($request);
         $query = $model::query()->filter($filters);
 
         // Detections from the external history API are merged in by date.
@@ -205,5 +214,75 @@ class FnsDetectionController extends Controller
             'recordsFiltered' => $slice['total'],
             'data' => FnsDetectionRows::format($slice['items']),
         ]);
+    }
+
+    /**
+     * Stream every detection matching the page's filters; the history API makes this too large to hold in memory.
+     *
+     * @param  class-string<FnsDetection|FnsDetection02>  $model
+     */
+    private function exportCsv(Request $request, string $model, string $fileName): StreamedResponse
+    {
+        $filters = $this->filters($request);
+
+        return response()->streamDownload(function () use ($model, $filters) {
+            @set_time_limit(0);
+
+            $stream = fopen('php://output', 'w');
+            // BOM so Excel reads the file as UTF-8.
+            fwrite($stream, "\xEF\xBB\xBF");
+            fputcsv($stream, ['Name', 'Camera IP', 'Warehouse', 'Godown / Compartment', 'Detection', 'Confidence (%)', 'Snapshot URL', 'Bounding Box', 'Detected At']);
+
+            foreach (FnsDetectionHistory::chunks($model::query()->filter($filters), $filters) as $detections) {
+                foreach (FnsDetectionRows::format($detections, false, false) as $row) {
+                    fputcsv($stream, array_map($this->csvCell(...), [
+                        $row['name'],
+                        $row['camera_ip'],
+                        $row['warehouse_name'],
+                        $row['location'],
+                        $row['detection_type'],
+                        $row['confidence'],
+                        $row['snapshot_url'] ? url($row['snapshot_url']) : '-',
+                        $row['bounding_box'],
+                        $row['detected_at'],
+                    ]));
+                }
+            }
+
+            fclose($stream);
+        }, $fileName . '-' . now()->format('Y-m-d-His') . '.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Camera names and similar values come from outside, so stop Excel running them as formulas.
+     */
+    private function csvCell(mixed $value): mixed
+    {
+        return is_string($value) && $value !== '-' && preg_match('/^[=+\-@\t\r]/', $value) ? "'" . $value : $value;
+    }
+
+    /**
+     * Filters from the query string. DataTables sends search[value]; the export link sends a plain search.
+     *
+     * @return array<string, string>
+     */
+    private function filters(Request $request): array
+    {
+        $text = fn (mixed $value) => is_string($value) ? trim($value) : '';
+        $date = function (mixed $value) use ($text) {
+            $value = $text($value);
+            $parsed = \DateTime::createFromFormat('!Y-m-d', $value);
+
+            return $parsed && $parsed->format('Y-m-d') === $value ? $value : '';
+        };
+        $search = $request->query('search');
+
+        return [
+            'search' => $text(is_array($search) ? ($search['value'] ?? '') : $search),
+            'detection_type' => $text($request->query('detection_type')),
+            'warehouse' => $text($request->query('warehouse')),
+            'from_date' => $date($request->query('from_date')),
+            'to_date' => $date($request->query('to_date')),
+        ];
     }
 }

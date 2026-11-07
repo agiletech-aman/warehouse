@@ -48,6 +48,7 @@ Route::resource('readings', ReadingController::class);
 Route::get('/alerts/data', [AlertController::class, 'data'])->name('alerts.data');
 Route::resource('alerts', AlertController::class);
 Route::get('/fns/detections/data', [FnsDetectionController::class, 'data'])->name('fns-detections.data');
+Route::get('/fns/detections/export', [FnsDetectionController::class, 'export'])->name('fns-detections.export');
 Route::get('/fns/detections/locations', [FnsDetectionController::class, 'locations'])->name('fns-detections.locations');
 Route::get('/fns/detections/locations/data', [FnsDetectionController::class, 'locationsData'])->name('fns-detections.locations.data');
 Route::delete('/fns/detections/locations/{location}', [FnsDetectionController::class, 'destroyLocation'])
@@ -55,6 +56,7 @@ Route::delete('/fns/detections/locations/{location}', [FnsDetectionController::c
     ->name('fns-detections.locations.destroy');
 Route::get('/fns/detections', [FnsDetectionController::class, 'index'])->name('fns-detections.index');
 Route::get('/fns/detections02/data', [FnsDetectionController::class, 'data02'])->name('fns-detections02.data');
+Route::get('/fns/detections02/export', [FnsDetectionController::class, 'export02'])->name('fns-detections02.export');
 Route::get('/fns/detections02/locations', [FnsDetectionController::class, 'locations02'])->name('fns-detections02.locations');
 Route::get('/fns/detections02/locations/data', [FnsDetectionController::class, 'locationsData02'])->name('fns-detections02.locations.data');
 Route::delete('/fns/detections02/locations/{location}', [FnsDetectionController::class, 'destroyLocation02'])
