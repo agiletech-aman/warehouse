@@ -91,6 +91,47 @@ class Reading extends Model
         });
     }
 
+    /**
+     * Level upper bounds (inclusive) per gas: value <= normal => normal,
+     * value <= severe => severe, anything above => critical.
+     */
+    private const LEVEL_THRESHOLDS = [
+        'PH3' => ['normal' => 0.3, 'severe' => 0.75],
+        'CO2' => ['normal' => 800, 'severe' => 1700],
+    ];
+
+    /**
+     * Level derived from the reading value for gas sensors with fixed thresholds.
+     * Returns null when the device type has no thresholds or the value is not numeric,
+     * so callers can fall back to the level the device sent.
+     */
+    public static function levelFromValue(mixed $deviceType, mixed $readingValue): ?string
+    {
+        if ($readingValue === null || $readingValue === '' || !is_numeric($readingValue)) {
+            return null;
+        }
+
+        $type = strtoupper(str_replace(
+            [' ', '-', '_', '₂', '₃'],
+            ['', '', '', '2', '3'],
+            trim((string) $deviceType)
+        ));
+
+        $thresholds = self::LEVEL_THRESHOLDS[$type] ?? null;
+
+        if ($thresholds === null) {
+            return null;
+        }
+
+        $value = (float) $readingValue;
+
+        return match (true) {
+            $value <= $thresholds['normal'] => 'normal',
+            $value <= $thresholds['severe'] => 'severe',
+            default => 'critical',
+        };
+    }
+
     public static function normalizeLevel(mixed $readingValue, mixed $level): string
     {
         if ($readingValue === null || $readingValue === '' || !is_numeric($readingValue)) {

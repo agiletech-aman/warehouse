@@ -172,18 +172,23 @@ class MasterAlertApiTest extends TestCase
             ->assertJsonPath('data.0.id', $recent->id);
     }
 
-    public function test_alerts_api_only_returns_the_last_30_days_even_with_older_start_date(): void
+    public function test_alerts_api_returns_alerts_older_than_30_days(): void
     {
-        $recent = $this->createAlert(now()->subDays(29));
-        $this->createAlert(now()->subDays(31));
+        $this->createAlert(now()->subDays(29));
+        $old = $this->createAlert(now()->subDays(90));
 
-        $startDate = now()->subDays(60)->format('Y-m-d');
+        $this->getJson('/api/alerts')
+            ->assertOk()
+            ->assertJsonPath('count', 2)
+            ->assertJsonPath('active_count', 2);
 
-        $this->getJson("/api/alerts?start_date={$startDate}")
+        $from = now()->subDays(100)->format('Y-m-d');
+        $to = now()->subDays(60)->format('Y-m-d');
+
+        $this->getJson("/api/alerts?start_date={$from}&end_date={$to}")
             ->assertOk()
             ->assertJsonPath('count', 1)
-            ->assertJsonPath('active_count', 1)
-            ->assertJsonPath('data.0.id', $recent->id);
+            ->assertJsonPath('data.0.id', $old->id);
     }
 
     public function test_locations_preserve_roman_numerals_in_warehouse_names(): void

@@ -140,15 +140,15 @@ class ReadingModuleTest extends TestCase
             ]],
         ];
 
-        $this->postJson('/api/readings', $payload('critical', 90))->assertOk();
-        $this->postJson('/api/readings', $payload('severe', 70))->assertOk();
-        $this->postJson('/api/readings', $payload('critical', 95))->assertOk();
+        $this->postJson('/api/readings', $payload('critical', 1800))->assertOk();
+        $this->postJson('/api/readings', $payload('severe', 1000))->assertOk();
+        $this->postJson('/api/readings', $payload('critical', 1900))->assertOk();
 
         $this->assertSame(1, Reading::count());
 
         $reading = Reading::first();
         $this->assertSame('critical', $reading->level);
-        $this->assertEquals(95, (float) $reading->reading_value);
+        $this->assertEquals(1900, (float) $reading->reading_value);
     }
 
     public function test_critical_readings_from_same_ip_after_five_minutes_create_a_new_row(): void
@@ -169,13 +169,79 @@ class ReadingModuleTest extends TestCase
             ]],
         ];
 
-        $this->postJson('/api/readings', $payload(90))->assertOk();
+        $this->postJson('/api/readings', $payload(1800))->assertOk();
 
         Reading::first()->update(['recorded_at' => now()->subMinutes(6)]);
 
-        $this->postJson('/api/readings', $payload(95))->assertOk();
+        $this->postJson('/api/readings', $payload(1900))->assertOk();
 
         $this->assertSame(2, Reading::count());
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: float, 2: string}>
+     */
+    public static function gasLevelThresholds(): array
+    {
+        return [
+            'ph3 zero' => ['PH3', 0, 'normal'],
+            'ph3 normal edge' => ['PH3', 0.3, 'normal'],
+            'ph3 severe start' => ['PH3', 0.31, 'severe'],
+            'ph3 severe edge' => ['PH3', 0.75, 'severe'],
+            'ph3 critical' => ['PH3', 0.76, 'critical'],
+            'co2 normal edge' => ['CO2', 800, 'normal'],
+            'co2 severe start' => ['CO2', 801, 'severe'],
+            'co2 severe edge' => ['CO2', 1700, 'severe'],
+            'co2 critical' => ['CO2', 1701, 'critical'],
+            'subscript type' => ['CO₂', 1701, 'critical'],
+        ];
+    }
+
+    /**
+     * @dataProvider gasLevelThresholds
+     */
+    public function test_gas_level_is_derived_from_value(string $type, float $value, string $expected): void
+    {
+        $this->assertSame($expected, Reading::levelFromValue($type, $value));
+    }
+
+    public function test_level_from_value_ignores_other_types_and_missing_values(): void
+    {
+        $this->assertNull(Reading::levelFromValue('Temperature', 55));
+        $this->assertNull(Reading::levelFromValue('CO2', null));
+        $this->assertNull(Reading::levelFromValue('PH3', ''));
+    }
+
+    public function test_stored_gas_level_follows_value_not_device_level(): void
+    {
+        Mail::fake();
+
+        $this->postJson('/api/readings', [
+            'key' => 'test-key',
+            'readings' => [
+                [
+                    'device_id' => 'PH3_192_168_1_60_1',
+                    'device_type' => 'PH3',
+                    'device_ip' => '192.168.1.60',
+                    'unit' => 'ppm',
+                    'value' => 0.5,
+                    'level' => 'normal',
+                    'status' => 'online',
+                ],
+                [
+                    'device_id' => 'CO2_192_168_1_61_1',
+                    'device_type' => 'CO2',
+                    'device_ip' => '192.168.1.61',
+                    'unit' => 'ppm',
+                    'value' => 400,
+                    'level' => 'critical',
+                    'status' => 'online',
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame('severe', Reading::where('sensor_device_id', 'PH3_192_168_1_60_1')->value('level'));
+        $this->assertSame('normal', Reading::where('sensor_device_id', 'CO2_192_168_1_61_1')->value('level'));
     }
 
     public function test_sensor_reading_rejects_an_invalid_api_key(): void

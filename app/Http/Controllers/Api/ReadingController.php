@@ -259,7 +259,12 @@ class ReadingController extends Controller
                 default => strtolower($incomingLevel),
             };
 
-            if ($readingValue !== null && is_numeric($readingValue)) {
+            // PH3 / CO2 levels come from the value thresholds, not from the device.
+            $valueLevel = Reading::levelFromValue($reading['device_type'] ?? null, $readingValue);
+
+            if ($valueLevel !== null) {
+                $storedLevel = $valueLevel;
+            } elseif ($readingValue !== null && is_numeric($readingValue)) {
                 if ($storedLevel === null) {
                     Log::warning('Numeric sensor reading received without a level; push accepted for debugging.', [
                         'reading_index' => $index,
