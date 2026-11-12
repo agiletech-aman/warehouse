@@ -162,7 +162,7 @@ class ReportController extends Controller
     /**
      * Chart data for the filtered readings: average / highest / lowest value per gas type
      * per time bucket, plus each gas's Normal / Severe ranges. Bucket size follows
-     * the date range (hourly up to 3 days, daily up to 92 days, monthly beyond).
+     * the date range (hourly up to 7 days, daily up to 92 days, monthly beyond).
      * Without a date range the chart covers the last 7 days.
      */
     public function chart(Request $request)
@@ -183,7 +183,7 @@ class ReportController extends Controller
 
         $days = $from->copy()->startOfDay()->diffInDays($to->copy()->startOfDay()) + 1;
         $bucket = match (true) {
-            $days <= 3 => 'hour',
+            $days <= 7 => 'hour',
             $days <= 92 => 'day',
             default => 'month',
         };

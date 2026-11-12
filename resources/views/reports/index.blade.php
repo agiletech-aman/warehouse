@@ -988,12 +988,9 @@
         normal: '#16a34a',
         severe: '#f59e0b',
         critical: '#dc2626',
-        avg: '#2563eb',
-        max: '#7c3aed',
-        min: '#0891b2',
-        zoneNormal: 'rgba(22, 163, 74, 0.10)',
-        zoneSevere: 'rgba(245, 158, 11, 0.14)',
-        zoneCritical: 'rgba(220, 38, 38, 0.10)',
+        avg: '#6cb8f0',
+        max: '#5b3a7e',
+        min: '#94a3b8',
     };
 
     let gasCharts = [];
@@ -1096,10 +1093,10 @@
                         </div>
 
                         ${s.thresholds ? `
-                            <div class="d-flex flex-wrap gap-3 small mb-1">
-                                <span><span class="zone-chip" style="background:${chartColors.zoneNormal};border-color:${chartColors.normal}"></span>Normal: 0 – ${formatValue(s.thresholds.normal)}</span>
-                                <span><span class="zone-chip" style="background:${chartColors.zoneSevere};border-color:${chartColors.severe}"></span>Severe: ${formatValue(s.thresholds.normal)} – ${formatValue(s.thresholds.severe)}</span>
-                                <span><span class="zone-chip" style="background:${chartColors.zoneCritical};border-color:${chartColors.critical}"></span>Critical: above ${formatValue(s.thresholds.severe)}</span>
+                            <div class="d-flex flex-wrap gap-3 small text-muted mb-1">
+                                <span><span class="zone-chip" style="background:${chartColors.normal};border-color:${chartColors.normal}"></span>Normal: 0 – ${formatValue(s.thresholds.normal)}</span>
+                                <span><span class="zone-chip" style="background:${chartColors.severe};border-color:${chartColors.severe}"></span>Severe: ${formatValue(s.thresholds.normal)} – ${formatValue(s.thresholds.severe)}</span>
+                                <span><span class="zone-chip" style="background:${chartColors.critical};border-color:${chartColors.critical}"></span>Critical: above ${formatValue(s.thresholds.severe)}</span>
                             </div>` : ''}
 
                         ${s.summary.error_readings ? `
@@ -1117,22 +1114,38 @@
 
         payload.series.forEach((s, i) => {
             const t = s.thresholds;
-            const pointColors = values => values.map(v => chartColors[valueLevel(v, t)] || chartColors.avg);
+
+            // Clean line style: smooth thin lines, no point markers (shown on hover only).
+            const line = (label, data, color, extra = {}) => ({
+                label, data,
+                borderColor: color,
+                backgroundColor: color,
+                borderWidth: 2.5,
+                tension: 0.35,
+                cubicInterpolationMode: 'monotone',
+                spanGaps: true,
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                fill: false,
+                ...extra,
+            });
 
             const datasets = [
-                { label: 'Average', data: s.avg, borderColor: chartColors.avg, backgroundColor: chartColors.avg, tension: 0.25, spanGaps: true, pointRadius: 3, pointBackgroundColor: t ? pointColors(s.avg) : chartColors.avg, order: 1 },
-                { label: 'Highest', data: s.max, borderColor: chartColors.max, backgroundColor: chartColors.max, borderDash: [4, 3], tension: 0.25, spanGaps: true, pointRadius: 3, pointBackgroundColor: t ? pointColors(s.max) : chartColors.max, order: 1 },
-                { label: 'Lowest', data: s.min, borderColor: chartColors.min, backgroundColor: chartColors.min, borderDash: [2, 3], tension: 0.25, spanGaps: true, pointRadius: 2, hidden: true, order: 1 },
+                line('Average', s.avg, chartColors.avg),
+                line('Highest', s.max, chartColors.max),
+                line('Lowest', s.min, chartColors.min, { hidden: true }),
             ];
 
+            // Limit lines only when the values come close to them, so they do not flatten the value lines.
             if (t) {
-                // Coloured level zones behind the value lines (indexes 3, 4, 5).
+                const peak = Math.max(0, ...s.max.filter(v => v !== null));
                 const flat = v => labels.map(() => v);
-                datasets.push(
-                    { label: 'Normal zone', data: flat(t.normal), borderColor: chartColors.normal, borderWidth: 1, borderDash: [6, 4], pointRadius: 0, backgroundColor: chartColors.zoneNormal, fill: 'origin', order: 2 },
-                    { label: 'Severe zone', data: flat(t.severe), borderColor: chartColors.critical, borderWidth: 1, borderDash: [6, 4], pointRadius: 0, backgroundColor: chartColors.zoneSevere, fill: 3, order: 2 },
-                    { label: 'Critical zone', data: flat(t.severe), borderWidth: 0, pointRadius: 0, backgroundColor: chartColors.zoneCritical, fill: 'end', order: 2 },
-                );
+                if (peak >= t.normal * 0.8) {
+                    datasets.push(line('Normal limit', flat(t.normal), chartColors.normal, { borderWidth: 1, borderDash: [6, 5], tension: 0, pointHoverRadius: 0 }));
+                }
+                if (peak >= t.severe * 0.8) {
+                    datasets.push(line('Severe limit', flat(t.severe), chartColors.critical, { borderWidth: 1, borderDash: [6, 5], tension: 0, pointHoverRadius: 0 }));
+                }
             }
 
             gasCharts.push(new Chart(document.getElementById('gasChart_' + i), {
@@ -1143,17 +1156,26 @@
                     maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
                     scales: {
-                        x: { ticks: { maxRotation: 0, autoSkip: true } },
+                        x: {
+                            grid: { display: false },
+                            border: { display: false },
+                            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, color: '#6b7280' },
+                        },
                         y: {
-                            beginAtZero: true,
-                            // Keep the critical zone visible above the severe limit.
-                            suggestedMax: t ? t.severe * 1.25 : undefined,
-                            title: { display: true, text: s.unit ? `Value (${s.unit})` : 'Value' },
+                            // Fit the scale to the values so ups and downs are visible.
+                            beginAtZero: false,
+                            grace: '10%',
+                            grid: { color: '#d1d5db' },
+                            border: { display: false },
+                            ticks: { maxTicksLimit: 7, color: '#6b7280', callback: v => formatValue(v) },
+                            title: { display: true, text: s.unit ? `Value (${s.unit})` : 'Value', color: '#6b7280' },
                         },
                     },
                     plugins: {
-                        // Zones are explained by the chips above the chart, so the legend only lists the value lines.
-                        legend: { labels: { filter: item => item.datasetIndex < 3 } },
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true, pointStyle: 'line', boxWidth: 24 },
+                        },
                         tooltip: {
                             filter: item => item.datasetIndex < 3,
                             callbacks: {
