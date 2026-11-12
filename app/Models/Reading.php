@@ -101,6 +101,16 @@ class Reading extends Model
     ];
 
     /**
+     * Current level thresholds per gas, e.g. for display on the dashboard.
+     *
+     * @return array<string, array{normal: float|int, severe: float|int}>
+     */
+    public static function levelThresholds(): array
+    {
+        return self::LEVEL_THRESHOLDS;
+    }
+
+    /**
      * Level derived from the reading value for gas sensors with fixed thresholds.
      * Returns null when the device type has no thresholds or the value is not numeric,
      * so callers can fall back to the level the device sent.

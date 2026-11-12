@@ -81,6 +81,48 @@
     </div>
 
     <div class="row g-4 mt-1">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm p-4">
+                <div class="mb-3">
+                    <h3 class="mb-1">Current Level Ranges</h3>
+                    <p class="text-muted mb-0">How a reading value is classified as Normal, Severe or Critical.</p>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0">
+                        <thead>
+                        <tr>
+                            <th>Gas</th>
+                            <th><span class="badge bg-success">Normal</span></th>
+                            <th><span class="badge bg-warning text-dark">Severe</span></th>
+                            <th><span class="badge bg-danger">Critical</span></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @foreach(\App\Models\Reading::levelThresholds() as $gas => $range)
+                            <tr>
+                                <td class="fw-semibold">{{ $gas }}</td>
+                                <td>0 – {{ $range['normal'] }}</td>
+                                <td>above {{ $range['normal'] }} – {{ $range['severe'] }}</td>
+                                <td>above {{ $range['severe'] }}</td>
+                            </tr>
+                        @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex align-items-start gap-2 mt-3">
+                    <span class="badge bg-secondary">Unknown</span>
+                    <p class="text-muted mb-0 small">
+                        Shown when the device sends no reading value or a non-numeric value, so the level cannot be worked out.
+                        For other device types (not listed above), the level sent by the device is used as-is.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mt-1">
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm p-4 h-100">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
