@@ -104,12 +104,14 @@ class ExportConsistencyTest extends TestCase
         $make('2026-11-10 22:00:00', 2000, 'critical'); // night
         $make('2026-11-11 03:00:00', 0.5, 'severe', 'PH3'); // night
         $make('2026-11-20 10:00:00', 100, 'normal');   // outside range
+        $make('2026-11-10 11:00:00', 65534, 'critical'); // sensor error code, day
 
         $range = ['from_date' => '2026-11-10', 'to_date' => '2026-11-11'];
 
         // Table respects day / night
+        // (the table still lists the sensor-error reading; only the chart leaves it out)
         $this->withSession($session)->getJson('/admin/reports/data?' . http_build_query($range + ['time_of_day' => 'day']))
-            ->assertJsonPath('recordsFiltered', 2);
+            ->assertJsonPath('recordsFiltered', 3);
         $this->withSession($session)->getJson('/admin/reports/data?' . http_build_query($range + ['time_of_day' => 'night']))
             ->assertJsonPath('recordsFiltered', 2);
 
@@ -126,6 +128,12 @@ class ExportConsistencyTest extends TestCase
         $this->assertEquals(500, $day['series'][0]['avg'][array_search('2026-11-10 09:00', $day['labels'], true)]);
         $this->assertEquals(900, $day['series'][0]['max'][array_search('2026-11-10 15:00', $day['labels'], true)]);
         $this->assertLessThan(1700, max(array_filter($day['series'][0]['max'], fn ($v) => $v !== null)));
+        $this->assertNull($day['series'][0]['max'][array_search('2026-11-10 11:00', $day['labels'], true)]);
+        $this->assertEquals(700, $day['series'][0]['summary']['avg']);
+        $this->assertEquals(900, $day['series'][0]['summary']['max']);
+        $this->assertSame('severe', $day['series'][0]['summary']['max_level']);
+        $this->assertSame(2, $day['series'][0]['summary']['readings']);
+        $this->assertSame(1, $day['series'][0]['summary']['error_readings']);
         $this->assertEquals(['normal' => 800, 'severe' => 1700], $day['series'][0]['thresholds']);
 
         // Night: both gases, critical CO2 at 22:00

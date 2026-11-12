@@ -467,6 +467,16 @@
         text-align: left;
     }
 
+    .zone-chip {
+        display: inline-block;
+        width: 14px;
+        height: 10px;
+        border: 1px solid;
+        border-radius: 2px;
+        margin-right: 4px;
+        vertical-align: middle;
+    }
+
     div.dt-processing {
         background: white;
     }
@@ -988,6 +998,13 @@
 
     let gasCharts = [];
 
+    // 674.3958 -> "674", 0.41237 -> "0.412"
+    function formatValue(value) {
+        if (value === null || value === undefined) return '-';
+        const n = Number(value);
+        return n.toLocaleString('en-IN', { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 3 });
+    }
+
     // Level of a value against the gas's ranges (same rule as the server: <= normal, <= severe, above).
     function valueLevel(value, thresholds) {
         if (value === null || value === undefined || !thresholds) return null;
@@ -1049,13 +1066,47 @@
         gasCharts.forEach(c => c.destroy());
         gasCharts = [];
 
+        const levelBadge = level => {
+            if (!level) return '';
+            const cls = { normal: 'bg-success', severe: 'bg-warning text-dark', critical: 'bg-danger' }[level] || 'bg-secondary';
+            return `<span class="badge ${cls} ms-1">${level.charAt(0).toUpperCase() + level.slice(1)}</span>`;
+        };
+
+        const statBox = (label, value, level, unit) => `
+            <div class="col-4">
+                <div class="border rounded-3 p-2 h-100">
+                    <div class="text-muted small">${label}</div>
+                    <div class="fw-bold fs-5">${value === null ? '-' : formatValue(value)}<span class="fs-6 fw-normal text-muted">${value !== null && unit ? ' ' + escapeHtml(unit) : ''}</span></div>
+                    <div>${levelBadge(level)}</div>
+                </div>
+            </div>
+        `;
+
         const container = document.getElementById('gasCharts');
         container.innerHTML = payload.series.map((s, i) => `
             <div class="col-lg-${payload.series.length > 1 ? 6 : 12}">
                 <div class="card shadow-sm border-0 h-100">
                     <div class="card-body">
-                        <h6 class="fw-bold mb-1">${escapeHtml(s.gas)} value${s.unit ? ' (' + escapeHtml(s.unit) + ')' : ''}</h6>
-                        <div class="text-muted small mb-2">Average and highest value in each period${s.thresholds ? `. Green: Normal (up to ${s.thresholds.normal}), amber: Severe (up to ${s.thresholds.severe}), red: Critical (above ${s.thresholds.severe}). Point colour shows the level of that value.` : ''}</div>
+                        <h6 class="fw-bold mb-2">${escapeHtml(s.gas)}${s.unit ? ' (' + escapeHtml(s.unit) + ')' : ''}</h6>
+
+                        <div class="row g-2 mb-2">
+                            ${statBox('Average', s.summary.avg, s.summary.avg_level, s.unit)}
+                            ${statBox('Highest', s.summary.max, s.summary.max_level, s.unit)}
+                            ${statBox('Lowest', s.summary.min, s.summary.min_level, s.unit)}
+                        </div>
+
+                        ${s.thresholds ? `
+                            <div class="d-flex flex-wrap gap-3 small mb-1">
+                                <span><span class="zone-chip" style="background:${chartColors.zoneNormal};border-color:${chartColors.normal}"></span>Normal: 0 – ${formatValue(s.thresholds.normal)}</span>
+                                <span><span class="zone-chip" style="background:${chartColors.zoneSevere};border-color:${chartColors.severe}"></span>Severe: ${formatValue(s.thresholds.normal)} – ${formatValue(s.thresholds.severe)}</span>
+                                <span><span class="zone-chip" style="background:${chartColors.zoneCritical};border-color:${chartColors.critical}"></span>Critical: above ${formatValue(s.thresholds.severe)}</span>
+                            </div>` : ''}
+
+                        ${s.summary.error_readings ? `
+                            <div class="small text-danger mb-1">
+                                ${s.summary.error_readings} reading(s) had a sensor error value (${payload.sensor_error_min_value} or more, e.g. 65534) and are not shown in the chart.
+                            </div>` : ''}
+
                         <div style="position: relative; height: 280px;">
                             <canvas id="gasChart_${i}"></canvas>
                         </div>
@@ -1101,13 +1152,15 @@
                         },
                     },
                     plugins: {
+                        // Zones are explained by the chips above the chart, so the legend only lists the value lines.
+                        legend: { labels: { filter: item => item.datasetIndex < 3 } },
                         tooltip: {
                             filter: item => item.datasetIndex < 3,
                             callbacks: {
                                 label: item => {
                                     if (item.raw === null || item.raw === undefined) return `${item.dataset.label}: no data`;
                                     const level = valueLevel(item.raw, t);
-                                    return `${item.dataset.label}: ${item.raw}${s.unit ? ' ' + s.unit : ''}` +
+                                    return `${item.dataset.label}: ${formatValue(item.raw)}${s.unit ? ' ' + s.unit : ''}` +
                                         (level ? ` (${level.charAt(0).toUpperCase() + level.slice(1)})` : '');
                                 },
                             },

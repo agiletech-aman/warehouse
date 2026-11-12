@@ -92,6 +92,12 @@ class Reading extends Model
     }
 
     /**
+     * Values at or above this are sensor error codes (e.g. 65534 / 65535 from a 16-bit
+     * sensor register), not real gas readings. Charts leave them out.
+     */
+    public const SENSOR_ERROR_MIN_VALUE = 65000;
+
+    /**
      * Level upper bounds (inclusive) per gas: value <= normal => normal,
      * value <= severe => severe, anything above => critical.
      * Stored in the level_thresholds table and editable from the dashboard.

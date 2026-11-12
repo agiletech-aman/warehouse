@@ -197,17 +197,39 @@ class ReportController extends Controller
             'month' => $isSqlite ? "strftime('%Y-%m', recorded_at)" : "DATE_FORMAT(recorded_at, '%Y-%m')",
         };
 
+        $gasSql = "COALESCE(NULLIF(TRIM(device_type), ''), 'Other')";
+        $errorMin = Reading::SENSOR_ERROR_MIN_VALUE;
+
+        // Sensor error codes (e.g. 65534 / 65535) are not gas values; they would squash the
+        // real values flat on the chart, so they are left out and only counted.
         $rows = (clone $query)
             ->toBase()
             ->whereNotNull('recorded_at')
+            ->whereNotNull('reading_value')
+            ->where('reading_value', '<', $errorMin)
             ->selectRaw("{$bucketSql} AS bucket")
-            ->selectRaw("COALESCE(NULLIF(TRIM(device_type), ''), 'Other') AS gas")
+            ->selectRaw("{$gasSql} AS gas")
             ->selectRaw('COUNT(*) AS total')
             ->selectRaw('AVG(reading_value) AS avg_value')
             ->selectRaw('MAX(reading_value) AS max_value')
             ->selectRaw('MIN(reading_value) AS min_value')
-            ->groupByRaw("{$bucketSql}, COALESCE(NULLIF(TRIM(device_type), ''), 'Other')")
+            ->groupByRaw("{$bucketSql}, {$gasSql}")
             ->get();
+
+        // Whole-period numbers per gas, plus how many error readings were left out.
+        $overall = (clone $query)
+            ->toBase()
+            ->whereNotNull('recorded_at')
+            ->whereNotNull('reading_value')
+            ->selectRaw("{$gasSql} AS gas")
+            ->selectRaw('AVG(CASE WHEN reading_value < ? THEN reading_value END) AS avg_value', [$errorMin])
+            ->selectRaw('MAX(CASE WHEN reading_value < ? THEN reading_value END) AS max_value', [$errorMin])
+            ->selectRaw('MIN(CASE WHEN reading_value < ? THEN reading_value END) AS min_value', [$errorMin])
+            ->selectRaw('SUM(CASE WHEN reading_value < ? THEN 1 ELSE 0 END) AS valid_count', [$errorMin])
+            ->selectRaw('SUM(CASE WHEN reading_value >= ? THEN 1 ELSE 0 END) AS error_count', [$errorMin])
+            ->groupByRaw($gasSql)
+            ->get()
+            ->keyBy('gas');
 
         // Every bucket in the range, so gaps show as empty instead of being skipped.
         $labels = [];
@@ -242,10 +264,17 @@ class ReportController extends Controller
         $round = fn ($v) => $v === null ? null : round((float) $v, 4);
         $thresholds = Reading::levelThresholds();
 
-        $series = $rows->groupBy('gas')
-            ->map(function ($gasRows, $gas) use ($labels, $round, $thresholds) {
-                $indexed = $gasRows->keyBy('bucket');
+        $byGas = $rows->groupBy('gas');
+
+        $series = $overall
+            ->map(function ($stats, $gas) use ($byGas, $labels, $round, $thresholds) {
+                $indexed = $byGas->get($gas, collect())->keyBy('bucket');
                 $key = strtoupper(str_replace([' ', '-', '_', '₂', '₃'], ['', '', '', '2', '3'], (string) $gas));
+                $gasThresholds = $thresholds[$key] ?? null;
+
+                $avg = $round($stats->avg_value);
+                $max = $round($stats->max_value);
+                $min = $round($stats->min_value);
 
                 return [
                     'gas' => (string) $gas,
@@ -253,8 +282,17 @@ class ReportController extends Controller
                     'avg' => array_map(fn ($l) => $round($indexed->get($l)?->avg_value), $labels),
                     'max' => array_map(fn ($l) => $round($indexed->get($l)?->max_value), $labels),
                     'min' => array_map(fn ($l) => $round($indexed->get($l)?->min_value), $labels),
-                    'count' => array_map(fn ($l) => (int) ($indexed->get($l)?->total ?? 0), $labels),
-                    'thresholds' => $thresholds[$key] ?? null,
+                    'thresholds' => $gasThresholds,
+                    'summary' => [
+                        'avg' => $avg,
+                        'max' => $max,
+                        'min' => $min,
+                        'avg_level' => $avg === null ? null : Reading::levelFromValue($gas, $avg),
+                        'max_level' => $max === null ? null : Reading::levelFromValue($gas, $max),
+                        'min_level' => $min === null ? null : Reading::levelFromValue($gas, $min),
+                        'readings' => (int) $stats->valid_count,
+                        'error_readings' => (int) $stats->error_count,
+                    ],
                 ];
             })
             ->sortKeys()
@@ -277,6 +315,7 @@ class ReportController extends Controller
             'from_date' => $filters['from_date'],
             'to_date' => $filters['to_date'],
             'time_of_day' => ReportExport::describeTimeOfDay($filters['time_of_day'] ?? null),
+            'sensor_error_min_value' => $errorMin,
             'labels' => $labels,
             'series' => $series,
         ]);
