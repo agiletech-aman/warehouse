@@ -24,6 +24,7 @@
         <div><b>Report Type:</b>{{ $filters['report_type'] ?? 'reading' }}</div>
         <div><b>From:</b>{{ $filters['from_date'] ?? '-' }} &nbsp; <b>To:</b>{{ $filters['to_date'] ?? '-' }}</div>
         <div><b>Region:</b>{{ $filters['region_name'] ?? $filters['region_code'] ?? '-' }} &nbsp; <b>Warehouse:</b>{{ $filters['warehouse_name'] ?? $filters['warehouse_code'] ?? '-' }}</div>
+        <div><b>Godown:</b>{{ $filters['godown'] ?: '-' }} &nbsp; <b>Compartment:</b>{{ $filters['compartment'] ?: '-' }}</div>
     </div>
 
     @php($selected = $filters['selected_cols'] ?? null)
@@ -31,26 +32,12 @@
         $selectedCols = $selected
             ? array_values(array_intersect(
                 array_filter(array_map('trim', explode(',', (string)$selected))),
-                ['date_time','region','region_code','warehouse','warehouse_code','device_name','device_code','device_type','device_ip','value','unit','level','status']
+                \App\Exports\ReportExport::COLUMNS
             ))
-            : ['date_time','region','region_code','warehouse','warehouse_code','device_name','device_code','device_type','device_ip','value','unit','level','status']
+            : \App\Exports\ReportExport::COLUMNS
     )
 
-    @php($colMap = [
-        'date_time' => 'Date & Time',
-        'region' => 'Region',
-        'region_code' => 'Region Code',
-        'warehouse' => 'Warehouse',
-        'warehouse_code' => 'Warehouse Code',
-        'device_name' => 'Device Name',
-        'device_code' => 'Device Code / Sensor Device ID',
-        'device_type' => 'Device Type',
-        'device_ip' => 'Device IP',
-        'value' => 'Value',
-        'unit' => 'Unit',
-        'level' => 'Level',
-        'status' => 'Status',
-    ])
+    @php($colMap = \App\Exports\ReportExport::HEADINGS)
 
     <table>
         <thead>
@@ -74,6 +61,10 @@
                         <td>{{ $row->warehouse ?: '-' }}</td>
                     @elseif($key === 'warehouse_code')
                         <td>{{ $row->warehouse_code ?: '-' }}</td>
+                    @elseif($key === 'godown')
+                        <td>{{ $row->godown ?: '-' }}</td>
+                    @elseif($key === 'compartment')
+                        <td>{{ $row->compartment ?: '-' }}</td>
                     @elseif($key === 'device_name')
                         <td>{{ $row->device_name ?: '-' }}</td>
                     @elseif($key === 'device_code')

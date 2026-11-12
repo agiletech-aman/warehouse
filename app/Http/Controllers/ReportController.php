@@ -119,6 +119,8 @@ class ReportController extends Controller
                 'region_code',
                 'warehouse',
                 'warehouse_code',
+                'godown',
+                'compartment',
                 'device_name',
                 'sensor_device_id',
                 'device_type',
@@ -136,6 +138,8 @@ class ReportController extends Controller
                     'region_code' => $r->region_code ?: '-',
                     'warehouse' => $r->warehouse ?: '-',
                     'warehouse_code' => $r->warehouse_code ?: '-',
+                    'godown' => $r->godown ?: '-',
+                    'compartment' => $r->compartment ?: '-',
                     'device_name' => $r->device_name ?: '-',
                     'device_code' => $r->sensor_device_id ?: '-',
                     'device_type' => $r->device_type ?: '-',
@@ -152,6 +156,50 @@ class ReportController extends Controller
             'recordsTotal' => $recordsTotal,
             'recordsFiltered' => $recordsFiltered,
             'data' => $data,
+        ]);
+    }
+
+    /**
+     * Godown and compartment options for the report filters, narrowed by the selected
+     * region / warehouse / godown. Read from device_latest_status (one row per sensor)
+     * so the readings history table is never scanned for distinct values.
+     */
+    public function locations(Request $request)
+    {
+        $base = DeviceLatestStatus::query();
+
+        if ($request->filled('region_code')) {
+            $base->whereIn('region_code', $this->splitMultiValue($request->query('region_code')));
+        }
+        if ($request->filled('warehouse_code')) {
+            $base->whereIn('warehouse_code', $this->splitMultiValue($request->query('warehouse_code')));
+        }
+
+        $distinct = function ($query, string $column): array {
+            return $query
+                ->whereNotNull($column)
+                ->where($column, '!=', '')
+                ->distinct()
+                ->orderBy($column)
+                ->pluck($column)
+                ->map(fn ($v) => trim((string) $v))
+                ->filter(fn ($v) => $v !== '')
+                ->unique()
+                ->values()
+                ->all();
+        };
+
+        $godowns = $distinct(clone $base, 'godown');
+
+        $compartmentQuery = clone $base;
+        if ($request->filled('godown')) {
+            $compartmentQuery->whereIn('godown', $this->splitMultiValue($request->query('godown')));
+        }
+
+        return response()->json([
+            'success' => true,
+            'godowns' => $godowns,
+            'compartments' => $distinct($compartmentQuery, 'compartment'),
         ]);
     }
 
@@ -174,7 +222,7 @@ class ReportController extends Controller
                     ->latest('recorded_at')
                     ->get([
                         'recorded_at', 'region', 'region_code', 'warehouse', 'warehouse_code',
-                        'device_name', 'sensor_device_id', 'device_type', 'device_ip',
+                        'godown', 'compartment', 'device_name', 'sensor_device_id', 'device_type', 'device_ip',
                         'reading_value', 'unit', 'level', 'status'
                     ]),
             ];
@@ -213,6 +261,9 @@ class ReportController extends Controller
             'warehouse_id' => $request->query('warehouse_id'),
             'warehouse_code' => $request->query('warehouse_code'),
             'warehouse_name' => $request->query('warehouse_name'),
+
+            'godown' => $request->query('godown'),
+            'compartment' => $request->query('compartment'),
 
             'device_type' => $request->query('device_type'),
             'device_code' => $request->query('device_code'), 
@@ -254,6 +305,13 @@ class ReportController extends Controller
         }
         if (!empty($filters['warehouse_name'])) {
             $q->where('warehouse', $filters['warehouse_name']);
+        }
+
+        if (!empty($filters['godown'])) {
+            $q->whereIn('godown', $this->splitMultiValue($filters['godown']));
+        }
+        if (!empty($filters['compartment'])) {
+            $q->whereIn('compartment', $this->splitMultiValue($filters['compartment']));
         }
 
         if (!empty($filters['device_type'])) {
@@ -330,6 +388,8 @@ class ReportController extends Controller
                 ->orWhere('region_code', 'like', '%' . $value . '%')
                 ->orWhere('warehouse', 'like', '%' . $value . '%')
                 ->orWhere('warehouse_code', 'like', '%' . $value . '%')
+                ->orWhere('godown', 'like', '%' . $value . '%')
+                ->orWhere('compartment', 'like', '%' . $value . '%')
                 ->orWhere('device_name', 'like', '%' . $value . '%')
                 ->orWhere('sensor_device_id', 'like', '%' . $value . '%')
                 ->orWhere('device_type', 'like', '%' . $value . '%')
@@ -411,6 +471,13 @@ class ReportController extends Controller
         }
         if (!empty($filters['warehouse_name'])) {
             $q->where('warehouse', $filters['warehouse_name']);
+        }
+
+        if (!empty($filters['godown'])) {
+            $q->whereIn('godown', $this->splitMultiValue($filters['godown']));
+        }
+        if (!empty($filters['compartment'])) {
+            $q->whereIn('compartment', $this->splitMultiValue($filters['compartment']));
         }
 
         if (!empty($filters['device_type'])) {

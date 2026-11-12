@@ -18,7 +18,7 @@ class ReportStreamExport
         $path = storage_path('app/' . uniqid('report_') . '.xlsx');
 
         $options = new Options();
-        $options->setColumnWidthForRange(22, 1, 13);
+        $options->setColumnWidthForRange(22, 1, count(ReportExport::COLUMNS));
 
         $writer = new Writer($options);
         $writer->openToFile($path);

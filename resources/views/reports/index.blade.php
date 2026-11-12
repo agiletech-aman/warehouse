@@ -158,6 +158,50 @@
                         <input type="hidden" id="warehouse_code" name="warehouse_code" value="">
                     </div>
 
+                    <div class="col-lg-2">
+                        <label class="form-label fw-semibold">
+                            Godown
+                        </label>
+
+                        <div class="dropdown">
+                            <button
+                                type="button"
+                                id="godownDropdownBtn"
+                                class="form-select text-start"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                aria-expanded="false">
+                                All Godowns
+                            </button>
+
+                            <ul class="dropdown-menu p-2 w-100" id="godownCheckboxList" style="max-height: 260px; overflow-y: auto;"></ul>
+                        </div>
+
+                        <input type="hidden" id="godown" name="godown" value="">
+                    </div>
+
+                    <div class="col-lg-2">
+                        <label class="form-label fw-semibold">
+                            Compartment
+                        </label>
+
+                        <div class="dropdown">
+                            <button
+                                type="button"
+                                id="compartmentDropdownBtn"
+                                class="form-select text-start"
+                                data-bs-toggle="dropdown"
+                                data-bs-auto-close="outside"
+                                aria-expanded="false">
+                                All Compartments
+                            </button>
+
+                            <ul class="dropdown-menu p-2 w-100" id="compartmentCheckboxList" style="max-height: 260px; overflow-y: auto;"></ul>
+                        </div>
+
+                        <input type="hidden" id="compartment" name="compartment" value="">
+                    </div>
+
 
                     <div class="col-lg-2">
                         <label class="form-label fw-semibold">
@@ -322,6 +366,10 @@
 
                             <th>Warehouse Code</th>
 
+                            <th>Godown</th>
+
+                            <th>Compartment</th>
+
                             <th>Device Name</th>
 
                             <th>Device Code</th>
@@ -412,6 +460,7 @@
     const API = {
         regions: '{{ url("/api/regions") }}',
         warehouses: '{{ url("/api/warehouses") }}',
+        locations: '{{ route("reports.locations") }}',
     };
 
     const routeExportPdf = '{{ route("reports.export",["format"=>"pdf"]) }}';
@@ -421,7 +470,7 @@
     let table = null;
     const reportColumnKeys = [
         'date_time', 'region', 'region_code', 'warehouse', 'warehouse_code',
-        'device_name', 'device_code', 'device_type', 'device_ip', 'value',
+        'godown', 'compartment', 'device_name', 'device_code', 'device_type', 'device_ip', 'value',
         'unit', 'level', 'status'
     ];
 
@@ -473,15 +522,26 @@
 
     /* ---------------- CHECKBOX DROPDOWNS ---------------- */
 
-    function renderCheckboxList(listId, items) {
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, ch => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[ch]);
+    }
+
+    function renderCheckboxList(listId, items, keepChecked = []) {
 
         const list = document.getElementById(listId);
 
-        list.innerHTML = items.map(item => `
+        if (!items.length) {
+            list.innerHTML = '<li class="text-muted small px-2">No options</li>';
+            return;
+        }
+
+        list.innerHTML = items.map((item, index) => `
             <li>
                 <div class="form-check">
-                    <input class="form-check-input dd-check" type="checkbox" value="${item.value}" data-label="${item.label}" id="${listId}_${item.value}">
-                    <label class="form-check-label" for="${listId}_${item.value}">${item.label}</label>
+                    <input class="form-check-input dd-check" type="checkbox" value="${escapeHtml(item.value)}" data-label="${escapeHtml(item.label)}" id="${listId}_${index}"${keepChecked.includes(String(item.value)) ? ' checked' : ''}>
+                    <label class="form-check-label" for="${listId}_${index}">${escapeHtml(item.label)}</label>
                 </div>
             </li>
         `).join('');
@@ -561,6 +621,41 @@
 
         renderCheckboxList('warehouseCheckboxList', items);
         syncCheckboxDropdown('warehouseCheckboxList', 'warehouse_code', 'warehouseDropdownBtn', 'All Warehouses');
+
+        await loadLocations();
+    }
+
+
+    /* ---------------- GODOWN / COMPARTMENT ---------------- */
+
+    function selectedValues(hiddenInputId) {
+        return document.getElementById(hiddenInputId).value.split(',').filter(Boolean);
+    }
+
+    async function loadLocations(onlyCompartments = false) {
+
+        const params = new URLSearchParams();
+        ['region_code', 'warehouse_code', 'godown'].forEach(key => {
+            const value = document.getElementById(key).value;
+            if (value) params.set(key, value);
+        });
+
+        const response = await fetch(API.locations + '?' + params);
+        if (!response.ok) {
+            console.error('Report locations failed with status', response.status);
+            return;
+        }
+
+        const json = await response.json();
+        const toItems = values => (values || []).map(v => ({ value: v, label: v }));
+
+        if (!onlyCompartments) {
+            renderCheckboxList('godownCheckboxList', toItems(json.godowns), selectedValues('godown'));
+            syncCheckboxDropdown('godownCheckboxList', 'godown', 'godownDropdownBtn', 'All Godowns');
+        }
+
+        renderCheckboxList('compartmentCheckboxList', toItems(json.compartments), selectedValues('compartment'));
+        syncCheckboxDropdown('compartmentCheckboxList', 'compartment', 'compartmentDropdownBtn', 'All Compartments');
     }
 
 
@@ -653,6 +748,14 @@
                 },
                 {
                     data: 'warehouse_code',
+                    defaultContent: ''
+                },
+                {
+                    data: 'godown',
+                    defaultContent: ''
+                },
+                {
+                    data: 'compartment',
                     defaultContent: ''
                 },
                 {
@@ -791,7 +894,15 @@
             loadWarehouses(document.getElementById('region_code').value);
         });
 
-        setupCheckboxDropdown('warehouseCheckboxList', 'warehouse_code', 'warehouseDropdownBtn', 'All Warehouses');
+        setupCheckboxDropdown('warehouseCheckboxList', 'warehouse_code', 'warehouseDropdownBtn', 'All Warehouses', () => {
+            loadLocations();
+        });
+
+        setupCheckboxDropdown('godownCheckboxList', 'godown', 'godownDropdownBtn', 'All Godowns', () => {
+            loadLocations(true);
+        });
+
+        setupCheckboxDropdown('compartmentCheckboxList', 'compartment', 'compartmentDropdownBtn', 'All Compartments');
 
         setupCheckboxDropdown('levelCheckboxList', 'level', 'levelDropdownBtn', 'All Levels');
 
@@ -809,6 +920,9 @@
                     .reset();
 
                 document.getElementById('regionDropdownBtn').textContent = 'All Regions';
+                document.querySelectorAll('#regionCheckboxList input, #levelCheckboxList input, #godownCheckboxList input, #compartmentCheckboxList input')
+                    .forEach(cb => { cb.checked = false; });
+                ['region_code', 'level', 'godown', 'compartment'].forEach(id => { document.getElementById(id).value = ''; });
                 document.getElementById('levelDropdownBtn').textContent = 'All Levels';
 
                 await loadWarehouses('');

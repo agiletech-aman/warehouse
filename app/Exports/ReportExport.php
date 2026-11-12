@@ -20,6 +20,32 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWidths, ShouldAutoSize, WithEvents
 {
+    /**
+     * Report columns in display order (shared with the reports table and PDF export).
+     */
+    public const COLUMNS = [
+        'date_time', 'region', 'region_code', 'warehouse', 'warehouse_code', 'godown', 'compartment',
+        'device_name', 'device_code', 'device_type', 'device_ip', 'value', 'unit', 'level', 'status',
+    ];
+
+    public const HEADINGS = [
+        'date_time' => 'Date & Time',
+        'region' => 'Region',
+        'region_code' => 'Region Code',
+        'warehouse' => 'Warehouse',
+        'warehouse_code' => 'Warehouse Code',
+        'godown' => 'Godown',
+        'compartment' => 'Compartment',
+        'device_name' => 'Device Name',
+        'device_code' => 'Device Code / Sensor Device ID',
+        'device_type' => 'Device Type',
+        'device_ip' => 'Device IP',
+        'value' => 'Value',
+        'unit' => 'Unit',
+        'level' => 'Level',
+        'status' => 'Status',
+    ];
+
     public function __construct(private array $filters = [])
     {
         $this->filters = $filters;
@@ -29,19 +55,11 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
     {
         $raw = $this->filters['selected_cols'] ?? null;
         if (!$raw) {
-            return [
-                'date_time','region','region_code','warehouse','warehouse_code',
-                'device_name','device_code','device_type','device_ip','value','unit','level','status'
-            ];
+            return self::COLUMNS;
         }
 
         $selected = array_filter(array_map('trim', explode(',', (string)$raw)));
-        $allowed = [
-            'date_time','region','region_code','warehouse','warehouse_code',
-            'device_name','device_code','device_type','device_ip','value','unit','level','status'
-        ];
-
-        return array_values(array_intersect($selected, $allowed));
+        return array_values(array_intersect($selected, self::COLUMNS));
     }
 
 
@@ -49,21 +67,7 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
     {
         $selected = $this->selectedColumns();
 
-        $map = [
-            'date_time' => 'Date & Time',
-            'region' => 'Region',
-            'region_code' => 'Region Code',
-            'warehouse' => 'Warehouse',
-            'warehouse_code' => 'Warehouse Code',
-            'device_name' => 'Device Name',
-            'device_code' => 'Device Code / Sensor Device ID',
-            'device_type' => 'Device Type',
-            'device_ip' => 'Device IP',
-            'value' => 'Value',
-            'unit' => 'Unit',
-            'level' => 'Level',
-            'status' => 'Status',
-        ];
+        $map = self::HEADINGS;
 
         return array_values(array_filter(array_map(function ($key) use ($map) {
             return $map[$key] ?? null;
@@ -81,6 +85,8 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
             'region_code' => $row->region_code ?: '-',
             'warehouse' => $row->warehouse ?: '-',
             'warehouse_code' => $row->warehouse_code ?: '-',
+            'godown' => $row->godown ?: '-',
+            'compartment' => $row->compartment ?: '-',
             'device_name' => $row->device_name ?: '-',
             'device_code' => $row->sensor_device_id ?: '-',
             'device_type' => $row->device_type ?: '-',
@@ -113,6 +119,8 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
             'K' => 12,
             'L' => 12,
             'M' => 12,
+            'N' => 12,
+            'O' => 12,
         ];
     }
 
@@ -240,6 +248,13 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
             $q->where('warehouse', $this->filters['warehouse_name']);
         }
 
+        if (!empty($this->filters['godown'])) {
+            $q->whereIn('godown', $this->splitMultiValue($this->filters['godown']));
+        }
+        if (!empty($this->filters['compartment'])) {
+            $q->whereIn('compartment', $this->splitMultiValue($this->filters['compartment']));
+        }
+
         if (!empty($this->filters['device_type'])) {
             $q->where('device_type', $this->filters['device_type']);
         }
@@ -286,6 +301,8 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
                 'region_code',
                 'warehouse',
                 'warehouse_code',
+                'godown',
+                'compartment',
                 'device_name',
                 'sensor_device_id',
                 'device_type',
