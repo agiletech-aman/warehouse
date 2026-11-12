@@ -184,16 +184,26 @@ class ReportController extends Controller
         $days = $from->copy()->startOfDay()->diffInDays($to->copy()->startOfDay()) + 1;
         $bucket = match (true) {
             $days <= 7 => 'hour',
-            $days <= 92 => 'day',
+            $days <= 92 => 'shift', // one Day and one Night point per date
             default => 'month',
         };
 
         $query = $this->buildReadingsQuery($filters);
         $isSqlite = $query->getConnection()->getDriverName() === 'sqlite';
 
+        $dayStart = (int) ReportExport::DAY_START_HOUR;
+        $nightStart = (int) ReportExport::NIGHT_START_HOUR;
+        $hourSql = ReportExport::hourSql($query);
+
+        // Shift bucket "YYYY-MM-DD D" / "YYYY-MM-DD N". A night runs 18:00 -> 06:00, so readings
+        // after midnight belong to the previous date's night (date of recorded_at minus 6 hours).
+        $shiftSuffixSql = "CASE WHEN {$hourSql} >= {$dayStart} AND {$hourSql} < {$nightStart} THEN ' D' ELSE ' N' END";
+
         $bucketSql = match ($bucket) {
             'hour' => $isSqlite ? "strftime('%Y-%m-%d %H:00', recorded_at)" : "DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00')",
-            'day' => $isSqlite ? "strftime('%Y-%m-%d', recorded_at)" : "DATE_FORMAT(recorded_at, '%Y-%m-%d')",
+            'shift' => $isSqlite
+                ? "(strftime('%Y-%m-%d', recorded_at, '-{$dayStart} hours') || {$shiftSuffixSql})"
+                : "CONCAT(DATE_FORMAT(DATE_SUB(recorded_at, INTERVAL {$dayStart} HOUR), '%Y-%m-%d'), {$shiftSuffixSql})",
             'month' => $isSqlite ? "strftime('%Y-%m', recorded_at)" : "DATE_FORMAT(recorded_at, '%Y-%m')",
         };
 
@@ -233,32 +243,47 @@ class ReportController extends Controller
 
         // Every bucket in the range, so gaps show as empty instead of being skipped.
         $labels = [];
-        $cursor = match ($bucket) {
-            'hour' => $from->copy()->startOfHour(),
-            'day' => $from->copy()->startOfDay(),
-            'month' => $from->copy()->startOfMonth(),
-        };
-        $format = match ($bucket) {
-            'hour' => 'Y-m-d H:00',
-            'day' => 'Y-m-d',
-            'month' => 'Y-m',
-        };
-        while ($cursor->lessThanOrEqualTo($to) && count($labels) < 2000) {
-            $label = $cursor->format($format);
-            $hour = (int) $cursor->format('H');
-            $isDayHour = $hour >= ReportExport::DAY_START_HOUR && $hour < ReportExport::NIGHT_START_HOUR;
-            $timeOfDay = strtolower((string) ($filters['time_of_day'] ?? ''));
+        $timeOfDay = strtolower((string) ($filters['time_of_day'] ?? ''));
+        $wantDay = $timeOfDay !== 'night';
+        $wantNight = $timeOfDay !== 'day';
 
-            // Hourly buckets outside the selected shift can never have data; leave them out.
-            if ($bucket !== 'hour' || !in_array($timeOfDay, ['day', 'night'], true) || ($timeOfDay === 'day') === $isDayHour) {
-                $labels[] = $label;
+        if ($bucket === 'shift') {
+            // The early hours of the first date belong to the night of the date before it.
+            $cursor = $from->copy()->subDay()->startOfDay();
+            while ($cursor->lessThanOrEqualTo($to) && count($labels) < 2000) {
+                $date = $cursor->format('Y-m-d');
+                $isLeadingNight = $cursor->lessThan($from);
+
+                if ($wantDay && !$isLeadingNight) {
+                    $labels[] = $date . ' D';
+                }
+                if ($wantNight) {
+                    $labels[] = $date . ' N';
+                }
+
+                $cursor->addDay();
             }
 
-            match ($bucket) {
-                'hour' => $cursor->addHour(),
-                'day' => $cursor->addDay(),
-                'month' => $cursor->addMonth(),
-            };
+            // Drop the leading night if it has no readings.
+            $leading = $from->copy()->subDay()->format('Y-m-d') . ' N';
+            if (($labels[0] ?? null) === $leading && !$rows->contains('bucket', $leading)) {
+                array_shift($labels);
+            }
+        } else {
+            $cursor = $bucket === 'hour' ? $from->copy()->startOfHour() : $from->copy()->startOfMonth();
+            $format = $bucket === 'hour' ? 'Y-m-d H:00' : 'Y-m';
+
+            while ($cursor->lessThanOrEqualTo($to) && count($labels) < 2000) {
+                $hour = (int) $cursor->format('H');
+                $isDayHour = $hour >= $dayStart && $hour < $nightStart;
+
+                // Hourly buckets outside the selected shift can never have data; leave them out.
+                if ($bucket !== 'hour' || ($isDayHour ? $wantDay : $wantNight)) {
+                    $labels[] = $cursor->format($format);
+                }
+
+                $bucket === 'hour' ? $cursor->addHour() : $cursor->addMonth();
+            }
         }
 
         $round = fn ($v) => $v === null ? null : round((float) $v, 4);

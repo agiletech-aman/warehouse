@@ -142,14 +142,26 @@ class ExportConsistencyTest extends TestCase
         $this->assertEquals(2000, $night['series'][0]['max'][array_search('2026-11-10 22:00', $night['labels'], true)]);
         $this->assertEquals(0.5, $night['series'][1]['avg'][array_search('2026-11-11 03:00', $night['labels'], true)]);
 
-        // Longer range -> daily buckets
+        // Longer range -> one Day and one Night point per date
         $daily = $this->withSession($session)->getJson('/admin/reports/chart?from_date=2026-11-01&to_date=2026-11-30')
-            ->assertJsonPath('bucket', 'day')
+            ->assertJsonPath('bucket', 'shift')
             ->json();
-        $this->assertCount(30, $daily['labels']);
+        $this->assertCount(60, $daily['labels']);
+        $this->assertSame(['2026-11-01 D', '2026-11-01 N'], array_slice($daily['labels'], 0, 2));
         $co2 = collect($daily['series'])->firstWhere('gas', 'CO2');
-        $this->assertEquals(2000, $co2['max'][array_search('2026-11-10', $daily['labels'], true)]);
-        $this->assertNull($co2['avg'][array_search('2026-11-15', $daily['labels'], true)]);
+        $this->assertEquals(900, $co2['max'][array_search('2026-11-10 D', $daily['labels'], true)]);
+        $this->assertEquals(2000, $co2['max'][array_search('2026-11-10 N', $daily['labels'], true)]);
+        $this->assertNull($co2['avg'][array_search('2026-11-15 D', $daily['labels'], true)]);
+
+        // 03:00 on 11 Nov belongs to the night that started on 10 Nov
+        $ph3 = collect($daily['series'])->firstWhere('gas', 'PH3');
+        $this->assertEquals(0.5, $ph3['avg'][array_search('2026-11-10 N', $daily['labels'], true)]);
+        $this->assertNull($ph3['avg'][array_search('2026-11-11 N', $daily['labels'], true)]);
+
+        // Night-only filter keeps only the night points
+        $nights = $this->withSession($session)->getJson('/admin/reports/chart?from_date=2026-11-01&to_date=2026-11-30&time_of_day=night')->json();
+        $this->assertCount(30, $nights['labels']);
+        $this->assertSame([], array_filter($nights['labels'], fn ($l) => str_ends_with($l, ' D')));
 
         // Export uses the same day / night filter
         $this->assertCount(2, (new ReportExport($range + ['time_of_day' => 'night']))->query()->get());

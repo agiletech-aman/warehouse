@@ -477,6 +477,16 @@
         vertical-align: middle;
     }
 
+    .night-chip {
+        display: inline-block;
+        width: 14px;
+        height: 10px;
+        background: rgba(100, 116, 139, 0.25);
+        border-radius: 2px;
+        margin-right: 4px;
+        vertical-align: middle;
+    }
+
     div.dt-processing {
         background: white;
     }
@@ -1015,18 +1025,81 @@
         return document.getElementById('view_chart').checked;
     }
 
-    function formatBucketLabel(label, bucket) {
-        if (bucket === 'hour') {
-            // "2026-11-12 14:00" -> "12 Nov 14:00"
-            const [date, time] = label.split(' ');
-            const d = new Date(date + 'T00:00:00');
-            return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + time;
-        }
-        if (bucket === 'day') {
-            return new Date(label + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-        }
-        return new Date(label + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+    const DAY_START_HOUR = {{ (int) \App\Exports\ReportExport::DAY_START_HOUR }};
+    const NIGHT_START_HOUR = {{ (int) \App\Exports\ReportExport::NIGHT_START_HOUR }};
+    const pad2 = n => String(n).padStart(2, '0');
+    const DAY_RANGE = `${pad2(DAY_START_HOUR)}:00–${pad2(NIGHT_START_HOUR)}:00`;
+    const NIGHT_RANGE = `${pad2(NIGHT_START_HOUR)}:00–${pad2(DAY_START_HOUR)}:00`;
+
+    function shortDate(date, withWeekday = false) {
+        return new Date(date + 'T00:00:00').toLocaleDateString('en-GB', {
+            ...(withWeekday ? { weekday: 'short' } : {}), day: '2-digit', month: 'short',
+        });
     }
+
+    // Bucket keys from the server: hour "2026-11-12 14:00", shift "2026-11-12 D" / "2026-11-12 N", month "2026-11".
+    function isNightBucket(key, bucket) {
+        if (bucket === 'hour') {
+            const hour = parseInt(key.slice(11, 13), 10);
+            return hour < DAY_START_HOUR || hour >= NIGHT_START_HOUR;
+        }
+        return bucket === 'shift' && key.endsWith(' N');
+    }
+
+    // Two-line x-axis label: date on top, time / shift below.
+    function tickLabel(key, bucket) {
+        if (bucket === 'hour') {
+            const time = key.slice(11);
+            return [shortDate(key.slice(0, 10)), (isNightBucket(key, bucket) ? '☾ ' : '☀ ') + time];
+        }
+        if (bucket === 'shift') {
+            return [shortDate(key.slice(0, 10)), isNightBucket(key, bucket) ? '☾ Night' : '☀ Day'];
+        }
+        return new Date(key + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+    }
+
+    // Full text for the tooltip title.
+    function fullLabel(key, bucket) {
+        if (bucket === 'hour') {
+            const hour = parseInt(key.slice(11, 13), 10);
+            const shift = isNightBucket(key, bucket) ? '☾ Night' : '☀ Day';
+            return `${shortDate(key.slice(0, 10), true)}, ${pad2(hour)}:00–${pad2((hour + 1) % 24)}:00 · ${shift}`;
+        }
+        if (bucket === 'shift') {
+            const date = key.slice(0, 10);
+            if (!isNightBucket(key, bucket)) {
+                return `${shortDate(date, true)} · ☀ Day (${DAY_RANGE})`;
+            }
+            const next = new Date(date + 'T00:00:00');
+            next.setDate(next.getDate() + 1);
+            const nextKey = `${next.getFullYear()}-${pad2(next.getMonth() + 1)}-${pad2(next.getDate())}`;
+            return `☾ Night: ${shortDate(date, true)} ${pad2(NIGHT_START_HOUR)}:00 → ${shortDate(nextKey, true)} ${pad2(DAY_START_HOUR)}:00`;
+        }
+        return tickLabel(key, bucket);
+    }
+
+    // Light grey band behind every night point / hour.
+    const nightShadePlugin = {
+        id: 'nightShade',
+        beforeDatasetsDraw(chart, args, options) {
+            const keys = options.keys || [];
+            const { ctx, chartArea, scales: { x } } = chart;
+            if (!keys.length || !chartArea) return;
+
+            const step = keys.length > 1 ? x.getPixelForValue(1) - x.getPixelForValue(0) : chartArea.width;
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(100, 116, 139, 0.12)';
+            keys.forEach((key, index) => {
+                if (!isNightBucket(key, options.bucket)) return;
+                const center = x.getPixelForValue(index);
+                const left = Math.max(chartArea.left, center - step / 2);
+                const right = Math.min(chartArea.right, center + step / 2);
+                ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+            });
+            ctx.restore();
+        },
+    };
 
     async function refreshChart() {
 
@@ -1049,12 +1122,14 @@
         const payload = await response.json();
         if (requestId !== chartRequestId || !payload.success) return;
 
-        const bucketName = { hour: 'Hourly', day: 'Daily', month: 'Monthly' }[payload.bucket] || '';
+        const bucketName = { hour: 'Hourly', shift: 'Day / Night per date', month: 'Monthly' }[payload.bucket] || '';
         document.getElementById('chartMeta').textContent =
             `${bucketName} view · ${payload.from_date} to ${payload.to_date} · ${payload.time_of_day}` +
             (document.getElementById('from_date').value || document.getElementById('to_date').value ? '' : ' (no date range selected: showing last 7 days)');
 
-        const labels = payload.labels.map(l => formatBucketLabel(l, payload.bucket));
+        const bucketKeys = payload.labels;
+        const labels = bucketKeys.map(k => tickLabel(k, payload.bucket));
+        const showShifts = payload.bucket === 'hour' || payload.bucket === 'shift';
         const hasData = payload.series.length > 0;
 
         document.getElementById('chartEmpty').classList.toggle('d-none', hasData);
@@ -1104,7 +1179,13 @@
                                 ${s.summary.error_readings} reading(s) had a sensor error value (${payload.sensor_error_min_value} or more, e.g. 65534) and are not shown in the chart.
                             </div>` : ''}
 
-                        <div style="position: relative; height: 280px;">
+                        ${showShifts ? `
+                            <div class="small text-muted mb-1">
+                                ☀ Day ${DAY_RANGE} &nbsp;·&nbsp;
+                                <span class="night-chip"></span>☾ Night ${NIGHT_RANGE} (shaded)
+                            </div>` : ''}
+
+                        <div style="position: relative; height: 300px;">
                             <canvas id="gasChart_${i}"></canvas>
                         </div>
                     </div>
@@ -1151,6 +1232,7 @@
             gasCharts.push(new Chart(document.getElementById('gasChart_' + i), {
                 type: 'line',
                 data: { labels, datasets },
+                plugins: [nightShadePlugin],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -1159,7 +1241,7 @@
                         x: {
                             grid: { display: false },
                             border: { display: false },
-                            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8, color: '#6b7280' },
+                            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10, color: '#6b7280' },
                         },
                         y: {
                             // Fit the scale to the values so ups and downs are visible.
@@ -1172,6 +1254,7 @@
                         },
                     },
                     plugins: {
+                        nightShade: { keys: bucketKeys, bucket: payload.bucket },
                         legend: {
                             position: 'bottom',
                             labels: { usePointStyle: true, pointStyle: 'line', boxWidth: 24 },
@@ -1179,6 +1262,7 @@
                         tooltip: {
                             filter: item => item.datasetIndex < 3,
                             callbacks: {
+                                title: items => items.length ? fullLabel(bucketKeys[items[0].dataIndex], payload.bucket) : '',
                                 label: item => {
                                     if (item.raw === null || item.raw === undefined) return `${item.dataset.label}: no data`;
                                     const level = valueLevel(item.raw, t);
