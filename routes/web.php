@@ -22,7 +22,10 @@ Route::middleware('admin.auth')->group(function () {
 Route::get('/admin/dashboard', [AdminController::class, 'dashboard'])
     ->name('admin.dashboard');
 
-Route::post('/admin/logout', [AdminController::class, 'logout'])
+Route::put('/admin/level-thresholds', [AdminController::class, 'updateLevelThresholds'])
+    ->name('admin.level-thresholds.update');
+
+Route::post('/admin/logout',[AdminController::class, 'logout'])
     ->name('admin.logout');
 
 Route::get('/admin/settings', [AdminController::class, 'settings'])

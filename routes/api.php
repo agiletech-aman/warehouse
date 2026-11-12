@@ -21,6 +21,22 @@ Route::get('/fns/detections02/ai', [FnsDetectionController::class, 'aiList02']);
 Route::post('/fns/detections', [FnsDetectionController::class, 'store']);
 Route::post('/fns/detections02', [FnsDetectionController::class, 'store02']);
 
+// Current Normal / Severe / Critical ranges per gas (editable from the dashboard)
+Route::get('/level-thresholds', function () {
+    return response()->json([
+        'success' => true,
+        'data' => collect(\App\Models\Reading::levelThresholds())
+            ->map(fn ($range, $gas) => [
+                'gas' => $gas,
+                'normal' => ['min' => 0, 'max' => $range['normal']],
+                'severe' => ['above' => $range['normal'], 'max' => $range['severe']],
+                'critical' => ['above' => $range['severe']],
+            ])
+            ->values(),
+        'unknown' => 'Reading value missing or not numeric.',
+    ]);
+});
+
 // Reading filters + severity counts (single API)
 Route::get('/readings/summary', [ReadingController::class, 'indexWithSummary']);
 Route::get('/regions', [RegionController::class, 'index']);

@@ -205,6 +205,48 @@ class ReadingModuleTest extends TestCase
         $this->assertSame($expected, Reading::levelFromValue($type, $value));
     }
 
+    public function test_admin_can_edit_level_ranges_and_they_are_used_everywhere(): void
+    {
+        $admin = Admin::factory()->create();
+        $session = ['admin_id' => $admin->id, 'admin_name' => $admin->name, 'admin_email' => $admin->email];
+
+        $this->withSession($session)->get('/admin/dashboard')
+            ->assertOk()
+            ->assertSee('Edit Ranges');
+
+        $this->withSession($session)->put('/admin/level-thresholds', [
+            'thresholds' => [
+                'PH3' => ['normal' => 0.5, 'severe' => 1],
+                'CO2' => ['normal' => 1000, 'severe' => 2000],
+            ],
+        ])->assertRedirect('/admin/dashboard');
+
+        $this->assertSame('normal', Reading::levelFromValue('PH3', 0.5));
+        $this->assertSame('severe', Reading::levelFromValue('PH3', 0.9));
+        $this->assertSame('critical', Reading::levelFromValue('PH3', 1.1));
+        $this->assertSame('severe', Reading::levelFromValue('CO2', 1500));
+
+        $this->getJson('/api/level-thresholds')
+            ->assertOk()
+            ->assertJsonPath('data.1.gas', 'CO2')
+            ->assertJsonPath('data.1.severe.max', 2000);
+    }
+
+    public function test_level_ranges_reject_severe_not_above_normal(): void
+    {
+        $admin = Admin::factory()->create();
+        $session = ['admin_id' => $admin->id, 'admin_name' => $admin->name, 'admin_email' => $admin->email];
+
+        $this->withSession($session)->put('/admin/level-thresholds', [
+            'thresholds' => [
+                'PH3' => ['normal' => 1, 'severe' => 0.5],
+                'CO2' => ['normal' => 800, 'severe' => 1700],
+            ],
+        ])->assertSessionHasErrorsIn('levelThresholds', ['thresholds.PH3.severe']);
+
+        $this->assertSame('critical', Reading::levelFromValue('PH3', 0.8));
+    }
+
     public function test_level_from_value_ignores_other_types_and_missing_values(): void
     {
         $this->assertNull(Reading::levelFromValue('Temperature', 55));

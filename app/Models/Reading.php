@@ -94,20 +94,13 @@ class Reading extends Model
     /**
      * Level upper bounds (inclusive) per gas: value <= normal => normal,
      * value <= severe => severe, anything above => critical.
-     */
-    private const LEVEL_THRESHOLDS = [
-        'PH3' => ['normal' => 0.3, 'severe' => 0.75],
-        'CO2' => ['normal' => 800, 'severe' => 1700],
-    ];
-
-    /**
-     * Current level thresholds per gas, e.g. for display on the dashboard.
+     * Stored in the level_thresholds table and editable from the dashboard.
      *
-     * @return array<string, array{normal: float|int, severe: float|int}>
+     * @return array<string, array{normal: float, severe: float}>
      */
     public static function levelThresholds(): array
     {
-        return self::LEVEL_THRESHOLDS;
+        return LevelThreshold::map();
     }
 
     /**
@@ -127,7 +120,7 @@ class Reading extends Model
             trim((string) $deviceType)
         ));
 
-        $thresholds = self::LEVEL_THRESHOLDS[$type] ?? null;
+        $thresholds = self::levelThresholds()[$type] ?? null;
 
         if ($thresholds === null) {
             return null;

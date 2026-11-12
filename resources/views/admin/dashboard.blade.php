@@ -83,10 +83,29 @@
     <div class="row g-4 mt-1">
         <div class="col-12">
             <div class="card border-0 shadow-sm p-4">
-                <div class="mb-3">
-                    <h3 class="mb-1">Current Level Ranges</h3>
-                    <p class="text-muted mb-0">How a reading value is classified as Normal, Severe or Critical.</p>
+                @php($levelThresholds = \App\Models\Reading::levelThresholds())
+
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                    <div>
+                        <h3 class="mb-1">Current Level Ranges</h3>
+                        <p class="text-muted mb-0">How a reading value is classified as Normal, Severe or Critical.</p>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary btn-sm"
+                            data-bs-toggle="modal" data-bs-target="#levelThresholdsModal">
+                        Edit Ranges
+                    </button>
                 </div>
+
+                @if(session('level_thresholds_success'))
+                    <div class="alert alert-success py-2">{{ session('level_thresholds_success') }}</div>
+                @endif
+                @if($errors->levelThresholds->any())
+                    <div class="alert alert-danger py-2 mb-3">
+                        @foreach($errors->levelThresholds->all() as $message)
+                            <div>{{ $message }}</div>
+                        @endforeach
+                    </div>
+                @endif
 
                 <div class="table-responsive">
                     <table class="table align-middle mb-0">
@@ -99,7 +118,7 @@
                         </tr>
                         </thead>
                         <tbody>
-                        @foreach(\App\Models\Reading::levelThresholds() as $gas => $range)
+                        @foreach($levelThresholds as $gas => $range)
                             <tr>
                                 <td class="fw-semibold">{{ $gas }}</td>
                                 <td>0 – {{ $range['normal'] }}</td>
@@ -121,6 +140,65 @@
             </div>
         </div>
     </div>
+
+    <div class="modal fade" id="levelThresholdsModal" tabindex="-1" aria-labelledby="levelThresholdsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="POST" action="{{ route('admin.level-thresholds.update') }}" class="modal-content">
+                @csrf
+                @method('PUT')
+                <div class="modal-header">
+                    <h5 class="modal-title" id="levelThresholdsModalLabel">Edit Level Ranges</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">
+                        Value up to <strong>Normal max</strong> is Normal, up to <strong>Severe max</strong> is Severe,
+                        and anything above Severe max is Critical. Severe max must be greater than Normal max.
+                    </p>
+
+                    @foreach($levelThresholds as $gas => $range)
+                        <div class="border rounded p-3 mb-3">
+                            <div class="fw-semibold mb-2">{{ $gas }}</div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small" for="threshold-{{ $gas }}-normal">Normal max</label>
+                                    <input type="number" step="any" min="0" required
+                                           class="form-control @error("thresholds.$gas.normal", 'levelThresholds') is-invalid @enderror"
+                                           id="threshold-{{ $gas }}-normal"
+                                           name="thresholds[{{ $gas }}][normal]"
+                                           value="{{ old("thresholds.$gas.normal", $range['normal']) }}">
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small" for="threshold-{{ $gas }}-severe">Severe max</label>
+                                    <input type="number" step="any" min="0" required
+                                           class="form-control @error("thresholds.$gas.severe", 'levelThresholds') is-invalid @enderror"
+                                           id="threshold-{{ $gas }}-severe"
+                                           name="thresholds[{{ $gas }}][severe]"
+                                           value="{{ old("thresholds.$gas.severe", $range['severe']) }}">
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+
+                    <p class="text-muted small mb-0">
+                        New ranges apply to readings received after saving. Already stored readings keep their level.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Ranges</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    @if($errors->levelThresholds->any())
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('levelThresholdsModal')).show();
+            });
+        </script>
+    @endif
 
     <div class="row g-4 mt-1">
         <div class="col-lg-8">

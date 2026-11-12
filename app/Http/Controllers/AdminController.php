@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Admin;
 use App\Models\DeviceLatestStatus;
+use App\Models\LevelThreshold;
 use App\Models\Reading;
 use App\Models\Region;
 use App\Models\Warehouse;
@@ -94,6 +95,39 @@ class AdminController extends Controller
             'last24hAlertsCount',
             'latestReadings'
         ));
+    }
+
+    public function updateLevelThresholds(Request $request)
+    {
+        if (!session()->has('admin_id')) {
+            return redirect()->route('admin.login');
+        }
+
+        $gases = array_keys(Reading::levelThresholds());
+
+        $rules = [];
+        $attributes = [];
+        foreach ($gases as $gas) {
+            $rules["thresholds.$gas.normal"] = 'required|numeric|min:0';
+            $rules["thresholds.$gas.severe"] = "required|numeric|gt:thresholds.$gas.normal";
+            $attributes["thresholds.$gas.normal"] = "$gas Normal max";
+            $attributes["thresholds.$gas.severe"] = "$gas Severe max";
+        }
+
+        $validated = $request->validateWithBag('levelThresholds', $rules, [], $attributes);
+
+        foreach ($gases as $gas) {
+            LevelThreshold::updateOrCreate(
+                ['gas' => $gas],
+                [
+                    'normal_max' => $validated['thresholds'][$gas]['normal'],
+                    'severe_max' => $validated['thresholds'][$gas]['severe'],
+                ]
+            );
+        }
+
+        return redirect()->route('admin.dashboard')
+            ->with('level_thresholds_success', 'Level ranges updated. New readings will use these ranges.');
     }
 
     public function settings()
