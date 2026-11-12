@@ -184,6 +184,19 @@
 
 
                     <div class="col-lg-2">
+                        <label class="form-label fw-semibold" for="time_of_day">
+                            Day / Night
+                        </label>
+
+                        <select id="time_of_day" name="time_of_day" class="form-select">
+                            <option value="">All (Day + Night)</option>
+                            <option value="day">Day (06:00 - 17:59)</option>
+                            <option value="night">Night (18:00 - 05:59)</option>
+                        </select>
+                    </div>
+
+
+                    <div class="col-lg-2">
                         <label class="form-label fw-semibold">
                             Level
                         </label>
@@ -324,8 +337,45 @@
         </div>
 
 
+        {{-- View switch --}}
+        <div class="card-body pt-0 pb-3">
+            <div class="btn-group" role="group" aria-label="Report view">
+                <input type="radio" class="btn-check" name="report_view" id="view_table" value="table" autocomplete="off" checked>
+                <label class="btn btn-outline-primary rounded-start-pill" for="view_table">Table View</label>
+
+                <input type="radio" class="btn-check" name="report_view" id="view_chart" value="chart" autocomplete="off">
+                <label class="btn btn-outline-primary rounded-end-pill" for="view_chart">Chart View</label>
+            </div>
+        </div>
+
+
+        {{-- Chart Section --}}
+        <div class="card-body pt-0 d-none" id="chartSection">
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <div class="text-muted small" id="chartMeta">Loading chart...</div>
+            </div>
+
+            <div class="card shadow-sm border-0 mb-3">
+                <div class="card-body">
+                    <h6 class="fw-bold mb-1">Readings by Level</h6>
+                    <div class="text-muted small mb-2">Number of Normal / Severe / Critical / Unknown readings in each period.</div>
+                    <div style="position: relative; height: 300px;">
+                        <canvas id="levelChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3" id="gasCharts"></div>
+
+            <div class="text-muted text-center py-5 d-none" id="chartEmpty">
+                No readings found for the selected filters.
+            </div>
+        </div>
+
+
         {{-- Table Section --}}
-        <div class="card-body pt-0">
+        <div class="card-body pt-0" id="tableSection">
 
             <div class="table-responsive">
 
@@ -436,11 +486,13 @@
 
 
 @section('scripts')
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
     const API = {
         regions: '{{ url("/api/regions") }}',
         warehouses: '{{ url("/api/warehouses") }}',
         locations: '{{ route("reports.locations") }}',
+        chart: '{{ route("reports.chart") }}',
     };
 
     const routeExportPdf = '{{ route("reports.export",["format"=>"pdf"]) }}';
@@ -930,6 +982,172 @@
     }
 
 
+    /* ---------------- CHART VIEW ---------------- */
+
+    const chartColors = {
+        normal: '#16a34a',
+        severe: '#f59e0b',
+        critical: '#dc2626',
+        unknown: '#9ca3af',
+        avg: '#2563eb',
+        max: '#7c3aed',
+        min: '#0891b2',
+    };
+
+    let levelChart = null;
+    let gasCharts = [];
+    let chartRequestId = 0;
+
+    function isChartView() {
+        return document.getElementById('view_chart').checked;
+    }
+
+    function formatBucketLabel(label, bucket) {
+        if (bucket === 'hour') {
+            // "2026-11-12 14:00" -> "12 Nov 14:00"
+            const [date, time] = label.split(' ');
+            const d = new Date(date + 'T00:00:00');
+            return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + time;
+        }
+        if (bucket === 'day') {
+            return new Date(label + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+        }
+        return new Date(label + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+    }
+
+    async function refreshChart() {
+
+        if (typeof Chart === 'undefined') {
+            document.getElementById('chartMeta').textContent = 'Chart library could not be loaded.';
+            return;
+        }
+
+        const requestId = ++chartRequestId;
+        document.getElementById('chartMeta').textContent = 'Loading chart...';
+
+        const response = await fetch(API.chart + '?' + getFilters());
+        if (requestId !== chartRequestId) return; // a newer filter change is already loading
+
+        if (!response.ok) {
+            document.getElementById('chartMeta').textContent = 'Chart could not be loaded (status ' + response.status + ').';
+            return;
+        }
+
+        const payload = await response.json();
+        if (requestId !== chartRequestId || !payload.success) return;
+
+        const bucketName = { hour: 'Hourly', day: 'Daily', month: 'Monthly' }[payload.bucket] || '';
+        document.getElementById('chartMeta').textContent =
+            `${bucketName} view · ${payload.from_date} to ${payload.to_date} · ${payload.time_of_day}` +
+            (document.getElementById('from_date').value || document.getElementById('to_date').value ? '' : ' (no date range selected: showing last 7 days)');
+
+        const labels = payload.labels.map(l => formatBucketLabel(l, payload.bucket));
+        const hasData = payload.series.length > 0;
+
+        document.getElementById('chartEmpty').classList.toggle('d-none', hasData);
+
+        // Level chart
+        const levelDatasets = [
+            ['normal', 'Normal'], ['severe', 'Severe'], ['critical', 'Critical'], ['unknown', 'Unknown'],
+        ].map(([key, label]) => ({
+            label,
+            data: payload.levels[key],
+            backgroundColor: chartColors[key],
+            stack: 'levels',
+        }));
+
+        if (levelChart) levelChart.destroy();
+        levelChart = new Chart(document.getElementById('levelChart'), {
+            type: 'bar',
+            data: { labels, datasets: levelDatasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { stacked: true, ticks: { maxRotation: 0, autoSkip: true } },
+                    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Readings' } },
+                },
+            },
+        });
+
+        // One value chart per gas type (CO2 and PH3 have very different scales).
+        gasCharts.forEach(c => c.destroy());
+        gasCharts = [];
+
+        const container = document.getElementById('gasCharts');
+        container.innerHTML = payload.series.map((s, i) => `
+            <div class="col-lg-${payload.series.length > 1 ? 6 : 12}">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-1">${escapeHtml(s.gas)} value${s.unit ? ' (' + escapeHtml(s.unit) + ')' : ''}</h6>
+                        <div class="text-muted small mb-2">Average and highest reading in each period${s.thresholds ? ', with Normal / Severe limits' : ''}.</div>
+                        <div style="position: relative; height: 280px;">
+                            <canvas id="gasChart_${i}"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        payload.series.forEach((s, i) => {
+            const datasets = [
+                { label: 'Average', data: s.avg, borderColor: chartColors.avg, backgroundColor: chartColors.avg, tension: 0.25, spanGaps: true, pointRadius: 2 },
+                { label: 'Highest', data: s.max, borderColor: chartColors.max, backgroundColor: chartColors.max, borderDash: [4, 3], tension: 0.25, spanGaps: true, pointRadius: 2 },
+                { label: 'Lowest', data: s.min, borderColor: chartColors.min, backgroundColor: chartColors.min, borderDash: [2, 3], tension: 0.25, spanGaps: true, pointRadius: 2, hidden: true },
+            ];
+
+            if (s.thresholds) {
+                datasets.push(
+                    { label: 'Normal limit', data: labels.map(() => s.thresholds.normal), borderColor: chartColors.normal, borderWidth: 1, borderDash: [6, 4], pointRadius: 0, fill: false },
+                    { label: 'Severe limit', data: labels.map(() => s.thresholds.severe), borderColor: chartColors.critical, borderWidth: 1, borderDash: [6, 4], pointRadius: 0, fill: false },
+                );
+            }
+
+            gasCharts.push(new Chart(document.getElementById('gasChart_' + i), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { ticks: { maxRotation: 0, autoSkip: true } },
+                        y: { beginAtZero: true },
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                afterBody: items => {
+                                    const count = s.count[items[0].dataIndex];
+                                    return count ? `Readings: ${count}` : 'No readings';
+                                },
+                            },
+                        },
+                    },
+                },
+            }));
+        });
+    }
+
+    function setupViewSwitch() {
+        document.querySelectorAll('input[name="report_view"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                const chart = isChartView();
+                document.getElementById('chartSection').classList.toggle('d-none', !chart);
+                document.getElementById('tableSection').classList.toggle('d-none', chart);
+                document.getElementById('colvisContainer').classList.toggle('invisible', chart);
+
+                if (chart) {
+                    refreshChart();
+                } else if (table) {
+                    table.columns.adjust();
+                }
+            });
+        });
+    }
+
+
     /* ---------------- REFRESH ---------------- */
 
     function reloadTable() {
@@ -939,6 +1157,8 @@
         refreshSummary();
 
         table.ajax.reload();
+
+        if (isChartView()) refreshChart();
     }
 
 
@@ -1044,6 +1264,8 @@
             setupDropdowns();
 
             setupResetButton();
+
+            setupViewSwitch();
 
         }
     );

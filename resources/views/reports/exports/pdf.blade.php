@@ -24,6 +24,7 @@
         <div><b>Report Type:</b>{{ $filters['report_type'] ?? 'reading' }}</div>
         <div><b>From:</b>{{ $filters['from_date'] ?? '-' }} &nbsp; <b>To:</b>{{ $filters['to_date'] ?? '-' }}</div>
         <div><b>Region:</b>{{ $filters['region_name'] ?? $filters['region_code'] ?? '-' }} &nbsp; <b>Warehouse:</b>{{ $filters['warehouse_name'] ?? $filters['warehouse_code'] ?? '-' }}</div>
+        <div><b>Time of Day:</b>{{ \App\Exports\ReportExport::describeTimeOfDay($filters['time_of_day'] ?? null) }}</div>
         <div><b>Godown / Compartment:</b>{{ \App\Exports\ReportExport::describeLocations($filters['locations'] ?? null) }}</div>
     </div>
 

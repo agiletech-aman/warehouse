@@ -160,6 +160,148 @@ class ReportController extends Controller
     }
 
     /**
+     * Chart data for the filtered readings: average / max value per gas type and
+     * Normal / Severe / Critical / Unknown counts per time bucket. Bucket size follows
+     * the date range (hourly up to 3 days, daily up to 92 days, monthly beyond).
+     * Without a date range the chart covers the last 7 days.
+     */
+    public function chart(Request $request)
+    {
+        $filters = $this->extractFilters($request);
+
+        $to = !empty($filters['to_date']) ? Carbon::parse($filters['to_date'])->endOfDay() : now()->endOfDay();
+        $from = !empty($filters['from_date'])
+            ? Carbon::parse($filters['from_date'])->startOfDay()
+            : $to->copy()->subDays(6)->startOfDay();
+
+        if ($from->greaterThan($to)) {
+            [$from, $to] = [$to->copy()->startOfDay(), $from->copy()->endOfDay()];
+        }
+
+        $filters['from_date'] = $from->toDateString();
+        $filters['to_date'] = $to->toDateString();
+
+        $days = $from->copy()->startOfDay()->diffInDays($to->copy()->startOfDay()) + 1;
+        $bucket = match (true) {
+            $days <= 3 => 'hour',
+            $days <= 92 => 'day',
+            default => 'month',
+        };
+
+        $query = $this->buildReadingsQuery($filters);
+        $isSqlite = $query->getConnection()->getDriverName() === 'sqlite';
+
+        $bucketSql = match ($bucket) {
+            'hour' => $isSqlite ? "strftime('%Y-%m-%d %H:00', recorded_at)" : "DATE_FORMAT(recorded_at, '%Y-%m-%d %H:00')",
+            'day' => $isSqlite ? "strftime('%Y-%m-%d', recorded_at)" : "DATE_FORMAT(recorded_at, '%Y-%m-%d')",
+            'month' => $isSqlite ? "strftime('%Y-%m', recorded_at)" : "DATE_FORMAT(recorded_at, '%Y-%m')",
+        };
+
+        $levelSql = "LOWER(COALESCE(level, ''))";
+
+        $rows = (clone $query)
+            ->toBase()
+            ->whereNotNull('recorded_at')
+            ->selectRaw("{$bucketSql} AS bucket")
+            ->selectRaw("COALESCE(NULLIF(TRIM(device_type), ''), 'Other') AS gas")
+            ->selectRaw('COUNT(*) AS total')
+            ->selectRaw('AVG(reading_value) AS avg_value')
+            ->selectRaw('MAX(reading_value) AS max_value')
+            ->selectRaw('MIN(reading_value) AS min_value')
+            ->selectRaw("SUM(CASE WHEN reading_value IS NOT NULL AND {$levelSql} = 'normal' THEN 1 ELSE 0 END) AS normal_count")
+            ->selectRaw("SUM(CASE WHEN reading_value IS NOT NULL AND {$levelSql} IN ('severe', 'warn', 'warning') THEN 1 ELSE 0 END) AS severe_count")
+            ->selectRaw("SUM(CASE WHEN reading_value IS NOT NULL AND {$levelSql} IN ('critical', 'crit') THEN 1 ELSE 0 END) AS critical_count")
+            ->groupByRaw("{$bucketSql}, COALESCE(NULLIF(TRIM(device_type), ''), 'Other')")
+            ->get();
+
+        // Every bucket in the range, so gaps show as empty instead of being skipped.
+        $labels = [];
+        $cursor = match ($bucket) {
+            'hour' => $from->copy()->startOfHour(),
+            'day' => $from->copy()->startOfDay(),
+            'month' => $from->copy()->startOfMonth(),
+        };
+        $format = match ($bucket) {
+            'hour' => 'Y-m-d H:00',
+            'day' => 'Y-m-d',
+            'month' => 'Y-m',
+        };
+        while ($cursor->lessThanOrEqualTo($to) && count($labels) < 2000) {
+            $label = $cursor->format($format);
+            $hour = (int) $cursor->format('H');
+            $isDayHour = $hour >= ReportExport::DAY_START_HOUR && $hour < ReportExport::NIGHT_START_HOUR;
+            $timeOfDay = strtolower((string) ($filters['time_of_day'] ?? ''));
+
+            // Hourly buckets outside the selected shift can never have data; leave them out.
+            if ($bucket !== 'hour' || !in_array($timeOfDay, ['day', 'night'], true) || ($timeOfDay === 'day') === $isDayHour) {
+                $labels[] = $label;
+            }
+
+            match ($bucket) {
+                'hour' => $cursor->addHour(),
+                'day' => $cursor->addDay(),
+                'month' => $cursor->addMonth(),
+            };
+        }
+
+        $byBucket = $rows->groupBy('bucket');
+        $levels = ['normal' => [], 'severe' => [], 'critical' => [], 'unknown' => []];
+        foreach ($labels as $label) {
+            $bucketRows = $byBucket->get($label, collect());
+            $normal = (int) $bucketRows->sum('normal_count');
+            $severe = (int) $bucketRows->sum('severe_count');
+            $critical = (int) $bucketRows->sum('critical_count');
+            $levels['normal'][] = $normal;
+            $levels['severe'][] = $severe;
+            $levels['critical'][] = $critical;
+            $levels['unknown'][] = (int) $bucketRows->sum('total') - $normal - $severe - $critical;
+        }
+
+        $round = fn ($v) => $v === null ? null : round((float) $v, 4);
+        $thresholds = Reading::levelThresholds();
+
+        $series = $rows->groupBy('gas')
+            ->map(function ($gasRows, $gas) use ($labels, $round, $thresholds) {
+                $indexed = $gasRows->keyBy('bucket');
+                $key = strtoupper(str_replace([' ', '-', '_', '₂', '₃'], ['', '', '', '2', '3'], (string) $gas));
+
+                return [
+                    'gas' => (string) $gas,
+                    'unit' => null,
+                    'avg' => array_map(fn ($l) => $round($indexed->get($l)?->avg_value), $labels),
+                    'max' => array_map(fn ($l) => $round($indexed->get($l)?->max_value), $labels),
+                    'min' => array_map(fn ($l) => $round($indexed->get($l)?->min_value), $labels),
+                    'count' => array_map(fn ($l) => (int) ($indexed->get($l)?->total ?? 0), $labels),
+                    'thresholds' => $thresholds[$key] ?? null,
+                ];
+            })
+            ->sortKeys()
+            ->values()
+            ->all();
+
+        // Unit per gas from one sample row (cheap; units are fixed per gas type).
+        foreach ($series as &$item) {
+            $item['unit'] = (clone $query)
+                ->where('device_type', $item['gas'])
+                ->whereNotNull('unit')
+                ->where('unit', '!=', '')
+                ->value('unit');
+        }
+        unset($item);
+
+        return response()->json([
+            'success' => true,
+            'bucket' => $bucket,
+            'from_date' => $filters['from_date'],
+            'to_date' => $filters['to_date'],
+            'time_of_day' => ReportExport::describeTimeOfDay($filters['time_of_day'] ?? null),
+            'labels' => $labels,
+            'levels' => $levels,
+            'series' => $series,
+        ]);
+    }
+
+    /**
      * Godown / compartment options for the selected warehouse(s), grouped by godown:
      * [{godown: 'G1', compartments: ['C1', 'C2']}]. Nothing is returned until a warehouse
      * is selected. Read from device_latest_status (one row per sensor) so the readings
@@ -274,6 +416,9 @@ class ReportController extends Controller
 
             'current_only' => $request->boolean('current_only'),
 
+            // all | day | night
+            'time_of_day' => $request->query('time_of_day'),
+
             'report_type' => $reportType,
         ];
 
@@ -291,6 +436,8 @@ class ReportController extends Controller
         if (!empty($filters['to_date'])) {
             $q->where('recorded_at', '<=', Carbon::parse($filters['to_date'])->format('Y-m-d') . ' 23:59:59');
         }
+
+        ReportExport::applyTimeOfDayFilter($q, $filters['time_of_day'] ?? null);
 
         // Unified filters
         if (!empty($filters['region_code'])) {

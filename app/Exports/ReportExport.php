@@ -249,6 +249,7 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
         }
 
         self::applyLocationFilter($q, $this->filters['locations'] ?? null);
+        self::applyTimeOfDayFilter($q, $this->filters['time_of_day'] ?? null);
 
         if (!empty($this->filters['device_type'])) {
             $q->where('device_type', $this->filters['device_type']);
@@ -372,6 +373,49 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
                 });
             }
         });
+    }
+
+    /** Day shift is 06:00–17:59, night shift is 18:00–05:59 (app timezone). */
+    public const DAY_START_HOUR = 6;
+    public const NIGHT_START_HOUR = 18;
+
+    /**
+     * SQL expression for the hour (0-23) of recorded_at on the query's connection.
+     */
+    public static function hourSql($query): string
+    {
+        return $query->getConnection()->getDriverName() === 'sqlite'
+            ? "CAST(strftime('%H', recorded_at) AS INTEGER)"
+            : 'HOUR(recorded_at)';
+    }
+
+    /**
+     * Keep only day-shift or night-shift readings. Anything other than 'day' / 'night' is ignored.
+     */
+    public static function applyTimeOfDayFilter($query, $timeOfDay): void
+    {
+        $timeOfDay = strtolower(trim((string) $timeOfDay));
+
+        if (!in_array($timeOfDay, ['day', 'night'], true)) {
+            return;
+        }
+
+        $hour = self::hourSql($query);
+        $range = $hour . ' >= ? AND ' . $hour . ' < ?';
+        $bindings = [self::DAY_START_HOUR, self::NIGHT_START_HOUR];
+
+        $timeOfDay === 'day'
+            ? $query->whereRaw($range, $bindings)
+            : $query->whereRaw('NOT (' . $range . ')', $bindings);
+    }
+
+    public static function describeTimeOfDay($timeOfDay): string
+    {
+        return match (strtolower(trim((string) $timeOfDay))) {
+            'day' => 'Day (06:00 - 17:59)',
+            'night' => 'Night (18:00 - 05:59)',
+            default => 'All (Day + Night)',
+        };
     }
 
     public static function describeLocations($raw): string

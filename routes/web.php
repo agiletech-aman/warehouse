@@ -72,6 +72,7 @@ Route::get('/fns/detections02', [FnsDetectionController::class, 'index02'])->nam
 
 Route::get('/admin/reports', [ReportController::class, 'index'])->name('reports.index');
 Route::get('/admin/reports/data', [ReportController::class, 'data'])->name('reports.data');
+Route::get('/admin/reports/chart', [ReportController::class, 'chart'])->name('reports.chart');
 Route::get('/admin/reports/locations', [ReportController::class, 'locations'])->name('reports.locations');
 Route::get('/admin/reports/summary', [ReportController::class, 'summary'])->name('reports.summary');
 Route::get('/admin/reports/export/{format}', [ReportController::class, 'export'])->name('reports.export');

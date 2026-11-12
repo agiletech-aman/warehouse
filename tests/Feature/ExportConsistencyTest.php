@@ -35,8 +35,9 @@ class ExportConsistencyTest extends TestCase
         $admin = \App\Models\Admin::factory()->create();
         $session = ['admin_id' => $admin->id, 'admin_name' => $admin->name, 'admin_email' => $admin->email];
 
-        foreach ([['G1', 'C1'], ['G1', 'C2'], ['G2', 'C3']] as [$godown, $compartment]) {
+        foreach ([['G1', 'C1', 'W1'], ['G1', 'C2', 'W1'], ['G2', 'C3', 'W1'], ['G9', 'C9', 'W2']] as [$godown, $compartment, $warehouse]) {
             $reading = Reading::create([
+                'warehouse_code' => $warehouse,
                 'sensor_device_id' => "DEV-$godown-$compartment",
                 'device_name' => "Device $godown $compartment",
                 'reading_value' => 10,
@@ -49,27 +50,99 @@ class ExportConsistencyTest extends TestCase
             ]);
             \App\Models\DeviceLatestStatus::query()->updateOrCreate(
                 ['sensor_device_id' => $reading->sensor_device_id],
-                $reading->only(['device_name', 'reading_value', 'unit', 'level', 'status', 'godown', 'compartment', 'recorded_at'])
+                $reading->only(['warehouse_code', 'device_name', 'reading_value', 'unit', 'level', 'status', 'godown', 'compartment', 'recorded_at'])
             );
         }
 
-        $this->withSession($session)->getJson('/admin/reports/data?godown=G1')
+        // Whole godown G1
+        $this->withSession($session)->getJson('/admin/reports/data?' . http_build_query(['locations' => json_encode([['G1', null]])]))
             ->assertOk()
             ->assertJsonPath('recordsFiltered', 2)
             ->assertJsonPath('data.0.godown', 'G1');
 
-        $this->withSession($session)->getJson('/admin/reports/data?godown=G1&compartment=C2')
-            ->assertJsonPath('recordsFiltered', 1)
-            ->assertJsonPath('data.0.compartment', 'C2');
+        // G1/C2 together with G2/C3 must not mix into G1/C3 or G2/C2
+        $this->withSession($session)->getJson('/admin/reports/data?' . http_build_query(['locations' => json_encode([['G1', 'C2'], ['G2', 'C3']])]))
+            ->assertJsonPath('recordsFiltered', 2);
 
-        $this->withSession($session)->getJson('/admin/reports/locations?godown=G1')
+        // No warehouse selected -> no options
+        $this->withSession($session)->getJson('/admin/reports/locations')
             ->assertOk()
-            ->assertJsonPath('godowns', ['G1', 'G2'])
-            ->assertJsonPath('compartments', ['C1', 'C2']);
+            ->assertJsonPath('groups', []);
 
-        $rows = (new ReportExport(['compartment' => 'C3']))->query()->get();
+        // Only the selected warehouse's godowns / compartments
+        $this->withSession($session)->getJson('/admin/reports/locations?warehouse_code=W1')
+            ->assertOk()
+            ->assertJsonPath('groups', [
+                ['godown' => 'G1', 'compartments' => ['C1', 'C2']],
+                ['godown' => 'G2', 'compartments' => ['C3']],
+            ]);
+
+        $rows = (new ReportExport(['locations' => json_encode([['G2', 'C3']])]))->query()->get();
         $this->assertCount(1, $rows);
         $this->assertSame('G2', $rows->first()->godown);
+
+        $this->assertSame('G1, G2 / C3', ReportExport::describeLocations(json_encode([['G1', null], ['G2', 'C3']])));
+    }
+
+    public function test_report_chart_and_table_follow_day_night_and_date_range(): void
+    {
+        $admin = \App\Models\Admin::factory()->create();
+        $session = ['admin_id' => $admin->id, 'admin_name' => $admin->name, 'admin_email' => $admin->email];
+
+        $make = fn (string $at, float $value, string $level, string $type = 'CO2') => Reading::create([
+            'sensor_device_id' => 'DEV-' . $type,
+            'device_type' => $type,
+            'reading_value' => $value,
+            'unit' => 'ppm',
+            'level' => $level,
+            'status' => 'online',
+            'recorded_at' => $at,
+        ]);
+
+        $make('2026-11-10 09:00:00', 500, 'normal');   // day
+        $make('2026-11-10 15:30:00', 900, 'severe');   // day
+        $make('2026-11-10 22:00:00', 2000, 'critical'); // night
+        $make('2026-11-11 03:00:00', 0.5, 'severe', 'PH3'); // night
+        $make('2026-11-20 10:00:00', 100, 'normal');   // outside range
+
+        $range = ['from_date' => '2026-11-10', 'to_date' => '2026-11-11'];
+
+        // Table respects day / night
+        $this->withSession($session)->getJson('/admin/reports/data?' . http_build_query($range + ['time_of_day' => 'day']))
+            ->assertJsonPath('recordsFiltered', 2);
+        $this->withSession($session)->getJson('/admin/reports/data?' . http_build_query($range + ['time_of_day' => 'night']))
+            ->assertJsonPath('recordsFiltered', 2);
+
+        // 2-day range -> hourly buckets; day shift only keeps 06:00-17:59 hours
+        $day = $this->withSession($session)->getJson('/admin/reports/chart?' . http_build_query($range + ['time_of_day' => 'day']))
+            ->assertOk()
+            ->assertJsonPath('bucket', 'hour')
+            ->json();
+
+        $this->assertCount(24, $day['labels']);
+        $this->assertSame('2026-11-10 06:00', $day['labels'][0]);
+        $this->assertSame(1, $day['levels']['normal'][array_search('2026-11-10 09:00', $day['labels'], true)]);
+        $this->assertSame(1, $day['levels']['severe'][array_search('2026-11-10 15:00', $day['labels'], true)]);
+        $this->assertSame(0, array_sum($day['levels']['critical']));
+        $this->assertSame(['CO2'], array_column($day['series'], 'gas'));
+        $this->assertEquals(['normal' => 800, 'severe' => 1700], $day['series'][0]['thresholds']);
+
+        // Night: both gases, critical CO2 at 22:00
+        $night = $this->withSession($session)->getJson('/admin/reports/chart?' . http_build_query($range + ['time_of_day' => 'night']))->json();
+        $this->assertSame(['CO2', 'PH3'], array_column($night['series'], 'gas'));
+        $this->assertSame(1, $night['levels']['critical'][array_search('2026-11-10 22:00', $night['labels'], true)]);
+
+        // Longer range -> daily buckets
+        $daily = $this->withSession($session)->getJson('/admin/reports/chart?from_date=2026-11-01&to_date=2026-11-30')
+            ->assertJsonPath('bucket', 'day')
+            ->json();
+        $this->assertCount(30, $daily['labels']);
+        $co2 = collect($daily['series'])->firstWhere('gas', 'CO2');
+        $this->assertEquals(2000, $co2['max'][array_search('2026-11-10', $daily['labels'], true)]);
+        $this->assertNull($co2['avg'][array_search('2026-11-15', $daily['labels'], true)]);
+
+        // Export uses the same day / night filter
+        $this->assertCount(2, (new ReportExport($range + ['time_of_day' => 'night']))->query()->get());
     }
 
     public function test_severe_alert_export_uses_the_same_linked_alert_rule_as_reports(): void
