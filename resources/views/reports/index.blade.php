@@ -356,16 +356,6 @@
                 <div class="text-muted small" id="chartMeta">Loading chart...</div>
             </div>
 
-            <div class="card shadow-sm border-0 mb-3">
-                <div class="card-body">
-                    <h6 class="fw-bold mb-1">Readings by Level</h6>
-                    <div class="text-muted small mb-2">Number of Normal / Severe / Critical / Unknown readings in each period.</div>
-                    <div style="position: relative; height: 300px;">
-                        <canvas id="levelChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
             <div class="row g-3" id="gasCharts"></div>
 
             <div class="text-muted text-center py-5 d-none" id="chartEmpty">
@@ -988,14 +978,23 @@
         normal: '#16a34a',
         severe: '#f59e0b',
         critical: '#dc2626',
-        unknown: '#9ca3af',
         avg: '#2563eb',
         max: '#7c3aed',
         min: '#0891b2',
+        zoneNormal: 'rgba(22, 163, 74, 0.10)',
+        zoneSevere: 'rgba(245, 158, 11, 0.14)',
+        zoneCritical: 'rgba(220, 38, 38, 0.10)',
     };
 
-    let levelChart = null;
     let gasCharts = [];
+
+    // Level of a value against the gas's ranges (same rule as the server: <= normal, <= severe, above).
+    function valueLevel(value, thresholds) {
+        if (value === null || value === undefined || !thresholds) return null;
+        if (value <= thresholds.normal) return 'normal';
+        if (value <= thresholds.severe) return 'severe';
+        return 'critical';
+    }
     let chartRequestId = 0;
 
     function isChartView() {
@@ -1046,31 +1045,6 @@
 
         document.getElementById('chartEmpty').classList.toggle('d-none', hasData);
 
-        // Level chart
-        const levelDatasets = [
-            ['normal', 'Normal'], ['severe', 'Severe'], ['critical', 'Critical'], ['unknown', 'Unknown'],
-        ].map(([key, label]) => ({
-            label,
-            data: payload.levels[key],
-            backgroundColor: chartColors[key],
-            stack: 'levels',
-        }));
-
-        if (levelChart) levelChart.destroy();
-        levelChart = new Chart(document.getElementById('levelChart'), {
-            type: 'bar',
-            data: { labels, datasets: levelDatasets },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                scales: {
-                    x: { stacked: true, ticks: { maxRotation: 0, autoSkip: true } },
-                    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Readings' } },
-                },
-            },
-        });
-
         // One value chart per gas type (CO2 and PH3 have very different scales).
         gasCharts.forEach(c => c.destroy());
         gasCharts = [];
@@ -1081,7 +1055,7 @@
                 <div class="card shadow-sm border-0 h-100">
                     <div class="card-body">
                         <h6 class="fw-bold mb-1">${escapeHtml(s.gas)} value${s.unit ? ' (' + escapeHtml(s.unit) + ')' : ''}</h6>
-                        <div class="text-muted small mb-2">Average and highest reading in each period${s.thresholds ? ', with Normal / Severe limits' : ''}.</div>
+                        <div class="text-muted small mb-2">Average and highest value in each period${s.thresholds ? `. Green: Normal (up to ${s.thresholds.normal}), amber: Severe (up to ${s.thresholds.severe}), red: Critical (above ${s.thresholds.severe}). Point colour shows the level of that value.` : ''}</div>
                         <div style="position: relative; height: 280px;">
                             <canvas id="gasChart_${i}"></canvas>
                         </div>
@@ -1091,16 +1065,22 @@
         `).join('');
 
         payload.series.forEach((s, i) => {
+            const t = s.thresholds;
+            const pointColors = values => values.map(v => chartColors[valueLevel(v, t)] || chartColors.avg);
+
             const datasets = [
-                { label: 'Average', data: s.avg, borderColor: chartColors.avg, backgroundColor: chartColors.avg, tension: 0.25, spanGaps: true, pointRadius: 2 },
-                { label: 'Highest', data: s.max, borderColor: chartColors.max, backgroundColor: chartColors.max, borderDash: [4, 3], tension: 0.25, spanGaps: true, pointRadius: 2 },
-                { label: 'Lowest', data: s.min, borderColor: chartColors.min, backgroundColor: chartColors.min, borderDash: [2, 3], tension: 0.25, spanGaps: true, pointRadius: 2, hidden: true },
+                { label: 'Average', data: s.avg, borderColor: chartColors.avg, backgroundColor: chartColors.avg, tension: 0.25, spanGaps: true, pointRadius: 3, pointBackgroundColor: t ? pointColors(s.avg) : chartColors.avg, order: 1 },
+                { label: 'Highest', data: s.max, borderColor: chartColors.max, backgroundColor: chartColors.max, borderDash: [4, 3], tension: 0.25, spanGaps: true, pointRadius: 3, pointBackgroundColor: t ? pointColors(s.max) : chartColors.max, order: 1 },
+                { label: 'Lowest', data: s.min, borderColor: chartColors.min, backgroundColor: chartColors.min, borderDash: [2, 3], tension: 0.25, spanGaps: true, pointRadius: 2, hidden: true, order: 1 },
             ];
 
-            if (s.thresholds) {
+            if (t) {
+                // Coloured level zones behind the value lines (indexes 3, 4, 5).
+                const flat = v => labels.map(() => v);
                 datasets.push(
-                    { label: 'Normal limit', data: labels.map(() => s.thresholds.normal), borderColor: chartColors.normal, borderWidth: 1, borderDash: [6, 4], pointRadius: 0, fill: false },
-                    { label: 'Severe limit', data: labels.map(() => s.thresholds.severe), borderColor: chartColors.critical, borderWidth: 1, borderDash: [6, 4], pointRadius: 0, fill: false },
+                    { label: 'Normal zone', data: flat(t.normal), borderColor: chartColors.normal, borderWidth: 1, borderDash: [6, 4], pointRadius: 0, backgroundColor: chartColors.zoneNormal, fill: 'origin', order: 2 },
+                    { label: 'Severe zone', data: flat(t.severe), borderColor: chartColors.critical, borderWidth: 1, borderDash: [6, 4], pointRadius: 0, backgroundColor: chartColors.zoneSevere, fill: 3, order: 2 },
+                    { label: 'Critical zone', data: flat(t.severe), borderWidth: 0, pointRadius: 0, backgroundColor: chartColors.zoneCritical, fill: 'end', order: 2 },
                 );
             }
 
@@ -1113,14 +1093,22 @@
                     interaction: { mode: 'index', intersect: false },
                     scales: {
                         x: { ticks: { maxRotation: 0, autoSkip: true } },
-                        y: { beginAtZero: true },
+                        y: {
+                            beginAtZero: true,
+                            // Keep the critical zone visible above the severe limit.
+                            suggestedMax: t ? t.severe * 1.25 : undefined,
+                            title: { display: true, text: s.unit ? `Value (${s.unit})` : 'Value' },
+                        },
                     },
                     plugins: {
                         tooltip: {
+                            filter: item => item.datasetIndex < 3,
                             callbacks: {
-                                afterBody: items => {
-                                    const count = s.count[items[0].dataIndex];
-                                    return count ? `Readings: ${count}` : 'No readings';
+                                label: item => {
+                                    if (item.raw === null || item.raw === undefined) return `${item.dataset.label}: no data`;
+                                    const level = valueLevel(item.raw, t);
+                                    return `${item.dataset.label}: ${item.raw}${s.unit ? ' ' + s.unit : ''}` +
+                                        (level ? ` (${level.charAt(0).toUpperCase() + level.slice(1)})` : '');
                                 },
                             },
                         },

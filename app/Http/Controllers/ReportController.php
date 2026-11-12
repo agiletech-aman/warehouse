@@ -160,8 +160,8 @@ class ReportController extends Controller
     }
 
     /**
-     * Chart data for the filtered readings: average / max value per gas type and
-     * Normal / Severe / Critical / Unknown counts per time bucket. Bucket size follows
+     * Chart data for the filtered readings: average / highest / lowest value per gas type
+     * per time bucket, plus each gas's Normal / Severe ranges. Bucket size follows
      * the date range (hourly up to 3 days, daily up to 92 days, monthly beyond).
      * Without a date range the chart covers the last 7 days.
      */
@@ -197,8 +197,6 @@ class ReportController extends Controller
             'month' => $isSqlite ? "strftime('%Y-%m', recorded_at)" : "DATE_FORMAT(recorded_at, '%Y-%m')",
         };
 
-        $levelSql = "LOWER(COALESCE(level, ''))";
-
         $rows = (clone $query)
             ->toBase()
             ->whereNotNull('recorded_at')
@@ -208,9 +206,6 @@ class ReportController extends Controller
             ->selectRaw('AVG(reading_value) AS avg_value')
             ->selectRaw('MAX(reading_value) AS max_value')
             ->selectRaw('MIN(reading_value) AS min_value')
-            ->selectRaw("SUM(CASE WHEN reading_value IS NOT NULL AND {$levelSql} = 'normal' THEN 1 ELSE 0 END) AS normal_count")
-            ->selectRaw("SUM(CASE WHEN reading_value IS NOT NULL AND {$levelSql} IN ('severe', 'warn', 'warning') THEN 1 ELSE 0 END) AS severe_count")
-            ->selectRaw("SUM(CASE WHEN reading_value IS NOT NULL AND {$levelSql} IN ('critical', 'crit') THEN 1 ELSE 0 END) AS critical_count")
             ->groupByRaw("{$bucketSql}, COALESCE(NULLIF(TRIM(device_type), ''), 'Other')")
             ->get();
 
@@ -242,19 +237,6 @@ class ReportController extends Controller
                 'day' => $cursor->addDay(),
                 'month' => $cursor->addMonth(),
             };
-        }
-
-        $byBucket = $rows->groupBy('bucket');
-        $levels = ['normal' => [], 'severe' => [], 'critical' => [], 'unknown' => []];
-        foreach ($labels as $label) {
-            $bucketRows = $byBucket->get($label, collect());
-            $normal = (int) $bucketRows->sum('normal_count');
-            $severe = (int) $bucketRows->sum('severe_count');
-            $critical = (int) $bucketRows->sum('critical_count');
-            $levels['normal'][] = $normal;
-            $levels['severe'][] = $severe;
-            $levels['critical'][] = $critical;
-            $levels['unknown'][] = (int) $bucketRows->sum('total') - $normal - $severe - $critical;
         }
 
         $round = fn ($v) => $v === null ? null : round((float) $v, 4);
@@ -296,7 +278,6 @@ class ReportController extends Controller
             'to_date' => $filters['to_date'],
             'time_of_day' => ReportExport::describeTimeOfDay($filters['time_of_day'] ?? null),
             'labels' => $labels,
-            'levels' => $levels,
             'series' => $series,
         ]);
     }

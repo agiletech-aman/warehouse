@@ -121,16 +121,18 @@ class ExportConsistencyTest extends TestCase
 
         $this->assertCount(24, $day['labels']);
         $this->assertSame('2026-11-10 06:00', $day['labels'][0]);
-        $this->assertSame(1, $day['levels']['normal'][array_search('2026-11-10 09:00', $day['labels'], true)]);
-        $this->assertSame(1, $day['levels']['severe'][array_search('2026-11-10 15:00', $day['labels'], true)]);
-        $this->assertSame(0, array_sum($day['levels']['critical']));
+        $this->assertArrayNotHasKey('levels', $day);
         $this->assertSame(['CO2'], array_column($day['series'], 'gas'));
+        $this->assertEquals(500, $day['series'][0]['avg'][array_search('2026-11-10 09:00', $day['labels'], true)]);
+        $this->assertEquals(900, $day['series'][0]['max'][array_search('2026-11-10 15:00', $day['labels'], true)]);
+        $this->assertLessThan(1700, max(array_filter($day['series'][0]['max'], fn ($v) => $v !== null)));
         $this->assertEquals(['normal' => 800, 'severe' => 1700], $day['series'][0]['thresholds']);
 
         // Night: both gases, critical CO2 at 22:00
         $night = $this->withSession($session)->getJson('/admin/reports/chart?' . http_build_query($range + ['time_of_day' => 'night']))->json();
         $this->assertSame(['CO2', 'PH3'], array_column($night['series'], 'gas'));
-        $this->assertSame(1, $night['levels']['critical'][array_search('2026-11-10 22:00', $night['labels'], true)]);
+        $this->assertEquals(2000, $night['series'][0]['max'][array_search('2026-11-10 22:00', $night['labels'], true)]);
+        $this->assertEquals(0.5, $night['series'][1]['avg'][array_search('2026-11-11 03:00', $night['labels'], true)]);
 
         // Longer range -> daily buckets
         $daily = $this->withSession($session)->getJson('/admin/reports/chart?from_date=2026-11-01&to_date=2026-11-30')
