@@ -8,6 +8,7 @@ use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
 
@@ -210,36 +211,61 @@ class ReportController extends Controller
         $gasSql = "COALESCE(NULLIF(TRIM(device_type), ''), 'Other')";
         $errorMin = Reading::SENSOR_ERROR_MIN_VALUE;
 
-        // Sensor error codes (e.g. 65534 / 65535) are not gas values; they would squash the
-        // real values flat on the chart, so they are left out and only counted.
-        $rows = (clone $query)
-            ->toBase()
-            ->whereNotNull('recorded_at')
-            ->whereNotNull('reading_value')
-            ->where('reading_value', '<', $errorMin)
-            ->selectRaw("{$bucketSql} AS bucket")
-            ->selectRaw("{$gasSql} AS gas")
-            ->selectRaw('COUNT(*) AS total')
-            ->selectRaw('AVG(reading_value) AS avg_value')
-            ->selectRaw('MAX(reading_value) AS max_value')
-            ->selectRaw('MIN(reading_value) AS min_value')
-            ->groupByRaw("{$bucketSql}, {$gasSql}")
-            ->get();
+        // ONE pass over the readings: per bucket and gas, the valid-value sum / count / max / min,
+        // the number of sensor-error readings and a unit. The whole-period numbers are rolled up
+        // from these rows in PHP instead of scanning the table a second time.
+        // Sensor error codes (e.g. 65534 / 65535) are not gas values; they would squash the real
+        // values flat on the chart, so they are left out of the values and only counted.
+        $valid = "reading_value < {$errorMin}";
 
-        // Whole-period numbers per gas, plus how many error readings were left out.
-        $overall = (clone $query)
-            ->toBase()
-            ->whereNotNull('recorded_at')
-            ->whereNotNull('reading_value')
-            ->selectRaw("{$gasSql} AS gas")
-            ->selectRaw('AVG(CASE WHEN reading_value < ? THEN reading_value END) AS avg_value', [$errorMin])
-            ->selectRaw('MAX(CASE WHEN reading_value < ? THEN reading_value END) AS max_value', [$errorMin])
-            ->selectRaw('MIN(CASE WHEN reading_value < ? THEN reading_value END) AS min_value', [$errorMin])
-            ->selectRaw('SUM(CASE WHEN reading_value < ? THEN 1 ELSE 0 END) AS valid_count', [$errorMin])
-            ->selectRaw('SUM(CASE WHEN reading_value >= ? THEN 1 ELSE 0 END) AS error_count', [$errorMin])
-            ->groupByRaw($gasSql)
-            ->get()
-            ->keyBy('gas');
+        $cacheKey = 'reports.chart.' . md5(json_encode([$filters, $bucket, $errorMin]));
+        // Past ranges do not change, so they can be kept longer than a range that includes today.
+        $ttl = $to->lessThan(now()->startOfDay()) ? now()->addMinutes(30) : now()->addMinute();
+
+        $rows = Cache::remember($cacheKey, $ttl, function () use ($query, $bucketSql, $gasSql, $valid) {
+            return (clone $query)
+                ->toBase()
+                ->whereNotNull('recorded_at')
+                ->whereNotNull('reading_value')
+                ->selectRaw("{$bucketSql} AS bucket")
+                ->selectRaw("{$gasSql} AS gas")
+                ->selectRaw("SUM(CASE WHEN {$valid} THEN 1 ELSE 0 END) AS valid_count")
+                ->selectRaw("SUM(CASE WHEN {$valid} THEN 0 ELSE 1 END) AS error_count")
+                ->selectRaw("SUM(CASE WHEN {$valid} THEN reading_value END) AS sum_value")
+                ->selectRaw("MAX(CASE WHEN {$valid} THEN reading_value END) AS max_value")
+                ->selectRaw("MIN(CASE WHEN {$valid} THEN reading_value END) AS min_value")
+                ->selectRaw('MAX(unit) AS unit')
+                ->groupByRaw("{$bucketSql}, {$gasSql}")
+                ->get()
+                ->map(fn ($row) => (array) $row)
+                ->all();
+        });
+
+        $rows = collect($rows)->map(function (array $row) {
+            $row = (object) $row;
+            $row->valid_count = (int) $row->valid_count;
+            $row->avg_value = $row->valid_count > 0 ? (float) $row->sum_value / $row->valid_count : null;
+
+            return $row;
+        });
+
+        $overall = $rows->groupBy('gas')->map(function ($gasRows) {
+            $validCount = (int) $gasRows->sum('valid_count');
+            $maxValues = $gasRows->pluck('max_value')->filter(fn ($v) => $v !== null);
+            $minValues = $gasRows->pluck('min_value')->filter(fn ($v) => $v !== null);
+
+            return (object) [
+                'avg_value' => $validCount > 0 ? (float) $gasRows->sum(fn ($r) => (float) $r->sum_value) / $validCount : null,
+                'max_value' => $maxValues->isEmpty() ? null : $maxValues->max(fn ($v) => (float) $v),
+                'min_value' => $minValues->isEmpty() ? null : $minValues->min(fn ($v) => (float) $v),
+                'valid_count' => $validCount,
+                'error_count' => (int) $gasRows->sum('error_count'),
+                'unit' => $gasRows->pluck('unit')->first(fn ($u) => $u !== null && $u !== ''),
+            ];
+        });
+
+        // Only buckets with real values belong on the value lines.
+        $rows = $rows->filter(fn ($row) => $row->valid_count > 0)->values();
 
         // Every bucket in the range, so gaps show as empty instead of being skipped.
         $labels = [];
@@ -303,7 +329,7 @@ class ReportController extends Controller
 
                 return [
                     'gas' => (string) $gas,
-                    'unit' => null,
+                    'unit' => $stats->unit,
                     'avg' => array_map(fn ($l) => $round($indexed->get($l)?->avg_value), $labels),
                     'max' => array_map(fn ($l) => $round($indexed->get($l)?->max_value), $labels),
                     'min' => array_map(fn ($l) => $round($indexed->get($l)?->min_value), $labels),
@@ -323,16 +349,6 @@ class ReportController extends Controller
             ->sortKeys()
             ->values()
             ->all();
-
-        // Unit per gas from one sample row (cheap; units are fixed per gas type).
-        foreach ($series as &$item) {
-            $item['unit'] = (clone $query)
-                ->where('device_type', $item['gas'])
-                ->whereNotNull('unit')
-                ->where('unit', '!=', '')
-                ->value('unit');
-        }
-        unset($item);
 
         return response()->json([
             'success' => true,

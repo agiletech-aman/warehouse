@@ -1020,6 +1020,9 @@
         return 'critical';
     }
     let chartRequestId = 0;
+    let chartAbort = null;        // cancels a chart request that a newer filter change replaced
+    let lastChartQuery = null;    // filters the chart on screen was drawn for
+    let tableIsStale = false;     // filters changed while the chart was showing
 
     function isChartView() {
         return document.getElementById('view_chart').checked;
@@ -1046,16 +1049,27 @@
         return bucket === 'shift' && key.endsWith(' N');
     }
 
-    // Two-line x-axis label: date on top, time / shift below.
-    function tickLabel(key, bucket) {
-        if (bucket === 'hour') {
-            const time = key.slice(11);
-            return [shortDate(key.slice(0, 10)), (isNightBucket(key, bucket) ? '☾ ' : '☀ ') + time];
+    // Selected date range of the chart on screen (YYYY-MM-DD), set before drawing.
+    let chartRange = { from: null, to: null };
+
+    function addDays(date, days) {
+        const d = new Date(date + 'T00:00:00');
+        d.setDate(d.getDate() + days);
+        return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    }
+
+    function longDate(date) {
+        return new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    // Date a bucket is shown under. The night that started the day before the range only holds
+    // the first date's 00:00–06:00 readings, so it is shown under the first selected date.
+    function displayDate(key, bucket) {
+        const date = key.slice(0, 10);
+        if (bucket === 'shift' && isNightBucket(key, bucket) && chartRange.from && date < chartRange.from) {
+            return chartRange.from;
         }
-        if (bucket === 'shift') {
-            return [shortDate(key.slice(0, 10)), isNightBucket(key, bucket) ? '☾ Night' : '☀ Day'];
-        }
-        return new Date(key + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+        return date;
     }
 
     // Full text for the tooltip title.
@@ -1068,14 +1082,55 @@
         if (bucket === 'shift') {
             const date = key.slice(0, 10);
             if (!isNightBucket(key, bucket)) {
-                return `${shortDate(date, true)} · ☀ Day (${DAY_RANGE})`;
+                return `☀ Day: ${shortDate(date, true)} ${DAY_RANGE}`;
             }
-            const next = new Date(date + 'T00:00:00');
-            next.setDate(next.getDate() + 1);
-            const nextKey = `${next.getFullYear()}-${pad2(next.getMonth() + 1)}-${pad2(next.getDate())}`;
-            return `☾ Night: ${shortDate(date, true)} ${pad2(NIGHT_START_HOUR)}:00 → ${shortDate(nextKey, true)} ${pad2(DAY_START_HOUR)}:00`;
+            // Clip the night to the selected range at both ends.
+            if (chartRange.from && date < chartRange.from) {
+                return `☾ Night: ${shortDate(chartRange.from, true)} 00:00 → ${pad2(DAY_START_HOUR)}:00`;
+            }
+            if (chartRange.to && date >= chartRange.to) {
+                return `☾ Night: ${shortDate(date, true)} ${pad2(NIGHT_START_HOUR)}:00 → 24:00`;
+            }
+            return `☾ Night: ${shortDate(date, true)} ${pad2(NIGHT_START_HOUR)}:00 → ${shortDate(addDays(date, 1), true)} ${pad2(DAY_START_HOUR)}:00`;
         }
-        return tickLabel(key, bucket);
+        return new Date(key + '-01T00:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+    }
+
+    // X-axis labels: one label per date (or per midnight for hourly charts), thinned to about
+    // ten evenly spaced dates. Other points get no label; night is shown by the shading.
+    function buildTickTexts(keys, bucket) {
+        if (bucket === 'month') return keys.map(k => fullLabel(k, bucket));
+
+        const anchors = [];
+        let previousDate = null;
+        keys.forEach((key, index) => {
+            const date = displayDate(key, bucket);
+            if (bucket === 'shift' && date !== previousDate) anchors.push(index);
+            if (bucket === 'hour' && (index === 0 || key.slice(11, 13) === '00' || date !== previousDate)) {
+                if (!anchors.includes(index)) anchors.push(index);
+            }
+            previousDate = date;
+        });
+
+        // Short hourly ranges: also label every 6 hours.
+        if (bucket === 'hour' && keys.length <= 72) {
+            keys.forEach((key, index) => {
+                if (parseInt(key.slice(11, 13), 10) % 6 === 0 && !anchors.includes(index)) anchors.push(index);
+            });
+            anchors.sort((a, b) => a - b);
+        }
+
+        const step = Math.max(1, Math.ceil(anchors.length / 10));
+        const texts = keys.map(() => '');
+        anchors.forEach((index, n) => {
+            if (n % step !== 0) return;
+            const key = keys[index];
+            texts[index] = bucket === 'hour'
+                ? [shortDate(key.slice(0, 10)), key.slice(11)]
+                : shortDate(displayDate(key, bucket));
+        });
+
+        return texts;
     }
 
     // Light grey band behind every night point / hour.
@@ -1108,10 +1163,25 @@
             return;
         }
 
+        const query = getFilters().toString();
+
+        // Same filters as the chart already on screen: nothing to load.
+        if (query === lastChartQuery) return;
+
         const requestId = ++chartRequestId;
         document.getElementById('chartMeta').textContent = 'Loading chart...';
 
-        const response = await fetch(API.chart + '?' + getFilters());
+        if (chartAbort) chartAbort.abort();
+        chartAbort = new AbortController();
+
+        let response;
+        try {
+            response = await fetch(API.chart + '?' + query, { signal: chartAbort.signal });
+        } catch (e) {
+            if (e.name === 'AbortError') return; // replaced by a newer request
+            document.getElementById('chartMeta').textContent = 'Chart could not be loaded.';
+            return;
+        }
         if (requestId !== chartRequestId) return; // a newer filter change is already loading
 
         if (!response.ok) {
@@ -1122,13 +1192,18 @@
         const payload = await response.json();
         if (requestId !== chartRequestId || !payload.success) return;
 
+        lastChartQuery = query;
+
         const bucketName = { hour: 'Hourly', shift: 'Day / Night per date', month: 'Monthly' }[payload.bucket] || '';
+        chartRange = { from: payload.from_date, to: payload.to_date };
+
         document.getElementById('chartMeta').textContent =
-            `${bucketName} view · ${payload.from_date} to ${payload.to_date} · ${payload.time_of_day}` +
+            `${longDate(payload.from_date)} to ${longDate(payload.to_date)} · ${bucketName} · ${payload.time_of_day}` +
             (document.getElementById('from_date').value || document.getElementById('to_date').value ? '' : ' (no date range selected: showing last 7 days)');
 
         const bucketKeys = payload.labels;
-        const labels = bucketKeys.map(k => tickLabel(k, payload.bucket));
+        const tickTexts = buildTickTexts(bucketKeys, payload.bucket);
+        const labels = bucketKeys.map(k => fullLabel(k, payload.bucket));
         const showShifts = payload.bucket === 'hour' || payload.bucket === 'shift';
         const hasData = payload.series.length > 0;
 
@@ -1241,7 +1316,12 @@
                         x: {
                             grid: { display: false },
                             border: { display: false },
-                            ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10, color: '#6b7280' },
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: false,
+                                color: '#6b7280',
+                                callback: (value, index) => tickTexts[index],
+                            },
                         },
                         y: {
                             // Fit the scale to the values so ups and downs are visible.
@@ -1288,6 +1368,10 @@
                 if (chart) {
                     refreshChart();
                 } else if (table) {
+                    if (tableIsStale) {
+                        tableIsStale = false;
+                        table.ajax.reload();
+                    }
                     table.columns.adjust();
                 }
             });
@@ -1303,9 +1387,13 @@
 
         refreshSummary();
 
-        table.ajax.reload();
-
-        if (isChartView()) refreshChart();
+        // Only load the view that is on screen; the hidden table reloads when it is opened again.
+        if (isChartView()) {
+            tableIsStale = true;
+            refreshChart();
+        } else {
+            table.ajax.reload();
+        }
     }
 
 
