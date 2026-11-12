@@ -24,7 +24,7 @@
         <div><b>Report Type:</b>{{ $filters['report_type'] ?? 'reading' }}</div>
         <div><b>From:</b>{{ $filters['from_date'] ?? '-' }} &nbsp; <b>To:</b>{{ $filters['to_date'] ?? '-' }}</div>
         <div><b>Region:</b>{{ $filters['region_name'] ?? $filters['region_code'] ?? '-' }} &nbsp; <b>Warehouse:</b>{{ $filters['warehouse_name'] ?? $filters['warehouse_code'] ?? '-' }}</div>
-        <div><b>Godown:</b>{{ $filters['godown'] ?: '-' }} &nbsp; <b>Compartment:</b>{{ $filters['compartment'] ?: '-' }}</div>
+        <div><b>Godown / Compartment:</b>{{ \App\Exports\ReportExport::describeLocations($filters['locations'] ?? null) }}</div>
     </div>
 
     @php($selected = $filters['selected_cols'] ?? null)

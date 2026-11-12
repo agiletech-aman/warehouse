@@ -248,12 +248,7 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
             $q->where('warehouse', $this->filters['warehouse_name']);
         }
 
-        if (!empty($this->filters['godown'])) {
-            $q->whereIn('godown', $this->splitMultiValue($this->filters['godown']));
-        }
-        if (!empty($this->filters['compartment'])) {
-            $q->whereIn('compartment', $this->splitMultiValue($this->filters['compartment']));
-        }
+        self::applyLocationFilter($q, $this->filters['locations'] ?? null);
 
         if (!empty($this->filters['device_type'])) {
             $q->where('device_type', $this->filters['device_type']);
@@ -312,6 +307,81 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
                 'level',
                 'status',
             ]);
+    }
+
+    /**
+     * Decode the combined Godown / Compartment filter: a JSON list of
+     * [godown, compartment|null] pairs. A null compartment means the whole godown.
+     *
+     * @return array<int, array{0: string, 1: ?string}>
+     */
+    public static function decodeLocations($raw): array
+    {
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+
+        $decoded = is_array($raw) ? $raw : json_decode((string) $raw, true);
+
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $pairs = [];
+        foreach ($decoded as $pair) {
+            if (!is_array($pair) || !array_key_exists(0, $pair)) {
+                continue;
+            }
+
+            $godown = is_scalar($pair[0]) || $pair[0] === null ? (string) $pair[0] : null;
+            $compartment = $pair[1] ?? null;
+
+            if ($godown === null || ($compartment !== null && !is_scalar($compartment))) {
+                continue;
+            }
+
+            $pairs[] = [$godown, $compartment === null ? null : (string) $compartment];
+        }
+
+        return $pairs;
+    }
+
+    /**
+     * Restrict a readings / device_latest_status query to the selected godown / compartment pairs.
+     */
+    public static function applyLocationFilter($query, $raw): void
+    {
+        $pairs = self::decodeLocations($raw);
+
+        if ($pairs === []) {
+            return;
+        }
+
+        $query->where(function ($q) use ($pairs) {
+            foreach ($pairs as [$godown, $compartment]) {
+                $q->orWhere(function ($q) use ($godown, $compartment) {
+                    if ($godown === '') {
+                        $q->where(fn ($q) => $q->whereNull('godown')->orWhere('godown', ''));
+                    } else {
+                        $q->where('godown', $godown);
+                    }
+
+                    if ($compartment !== null) {
+                        $q->where('compartment', $compartment);
+                    }
+                });
+            }
+        });
+    }
+
+    public static function describeLocations($raw): string
+    {
+        $labels = array_map(
+            fn ($pair) => ($pair[0] === '' ? 'No Godown' : $pair[0]) . ($pair[1] === null ? '' : ' / ' . $pair[1]),
+            self::decodeLocations($raw)
+        );
+
+        return $labels ? implode(', ', $labels) : '-';
     }
 
     /**

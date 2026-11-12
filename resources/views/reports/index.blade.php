@@ -158,48 +158,28 @@
                         <input type="hidden" id="warehouse_code" name="warehouse_code" value="">
                     </div>
 
-                    <div class="col-lg-2">
+                    <div class="col-lg-3">
                         <label class="form-label fw-semibold">
-                            Godown
+                            Godown / Compartment
                         </label>
 
                         <div class="dropdown">
                             <button
                                 type="button"
-                                id="godownDropdownBtn"
-                                class="form-select text-start"
+                                id="locationDropdownBtn"
+                                class="form-select text-start text-truncate"
                                 data-bs-toggle="dropdown"
                                 data-bs-auto-close="outside"
                                 aria-expanded="false">
-                                All Godowns
+                                Select a warehouse first
                             </button>
 
-                            <ul class="dropdown-menu p-2 w-100" id="godownCheckboxList" style="max-height: 260px; overflow-y: auto;"></ul>
+                            <ul class="dropdown-menu p-2 w-100" id="locationCheckboxList" style="max-height: 320px; overflow-y: auto;">
+                                <li class="text-muted small px-2">Select a warehouse to see its godowns and compartments.</li>
+                            </ul>
                         </div>
 
-                        <input type="hidden" id="godown" name="godown" value="">
-                    </div>
-
-                    <div class="col-lg-2">
-                        <label class="form-label fw-semibold">
-                            Compartment
-                        </label>
-
-                        <div class="dropdown">
-                            <button
-                                type="button"
-                                id="compartmentDropdownBtn"
-                                class="form-select text-start"
-                                data-bs-toggle="dropdown"
-                                data-bs-auto-close="outside"
-                                aria-expanded="false">
-                                All Compartments
-                            </button>
-
-                            <ul class="dropdown-menu p-2 w-100" id="compartmentCheckboxList" style="max-height: 260px; overflow-y: auto;"></ul>
-                        </div>
-
-                        <input type="hidden" id="compartment" name="compartment" value="">
+                        <input type="hidden" id="locations" name="locations" value="">
                     </div>
 
 
@@ -628,34 +608,148 @@
 
     /* ---------------- GODOWN / COMPARTMENT ---------------- */
 
-    function selectedValues(hiddenInputId) {
-        return document.getElementById(hiddenInputId).value.split(',').filter(Boolean);
+    // Groups for the selected warehouse(s): [{godown: 'G1', compartments: ['C1', 'C2']}]
+    let locationGroups = [];
+
+    function currentLocations() {
+        try {
+            const value = document.getElementById('locations').value;
+            return value ? JSON.parse(value) : [];
+        } catch (e) {
+            return [];
+        }
     }
 
-    async function loadLocations(onlyCompartments = false) {
+    function godownLabel(godown) {
+        return godown === '' ? 'No Godown' : godown;
+    }
 
-        const params = new URLSearchParams();
-        ['region_code', 'warehouse_code', 'godown'].forEach(key => {
-            const value = document.getElementById(key).value;
-            if (value) params.set(key, value);
-        });
+    async function loadLocations() {
 
-        const response = await fetch(API.locations + '?' + params);
+        const list = document.getElementById('locationCheckboxList');
+        const btn = document.getElementById('locationDropdownBtn');
+        const warehouseCode = document.getElementById('warehouse_code').value;
+        const previous = currentLocations();
+
+        if (!warehouseCode) {
+            locationGroups = [];
+            list.innerHTML = '<li class="text-muted small px-2">Select a warehouse to see its godowns and compartments.</li>';
+            btn.textContent = 'Select a warehouse first';
+            setLocations([]);
+            return;
+        }
+
+        btn.textContent = 'Loading...';
+
+        const response = await fetch(API.locations + '?' + new URLSearchParams({ warehouse_code: warehouseCode }));
         if (!response.ok) {
             console.error('Report locations failed with status', response.status);
+            btn.textContent = 'All Godowns / Compartments';
             return;
         }
 
         const json = await response.json();
-        const toItems = values => (values || []).map(v => ({ value: v, label: v }));
+        locationGroups = json.groups || [];
 
-        if (!onlyCompartments) {
-            renderCheckboxList('godownCheckboxList', toItems(json.godowns), selectedValues('godown'));
-            syncCheckboxDropdown('godownCheckboxList', 'godown', 'godownDropdownBtn', 'All Godowns');
+        if (!locationGroups.length) {
+            list.innerHTML = '<li class="text-muted small px-2">No godown / compartment found for this warehouse.</li>';
+            setLocations([]);
+            return;
         }
 
-        renderCheckboxList('compartmentCheckboxList', toItems(json.compartments), selectedValues('compartment'));
-        syncCheckboxDropdown('compartmentCheckboxList', 'compartment', 'compartmentDropdownBtn', 'All Compartments');
+        list.innerHTML = locationGroups.map((group, gi) => `
+            <li class="${gi ? 'border-top pt-1 mt-1' : ''}">
+                <div class="form-check">
+                    <input class="form-check-input dd-check loc-godown" type="checkbox" data-group="${gi}" id="loc_g_${gi}">
+                    <label class="form-check-label fw-semibold" for="loc_g_${gi}">${escapeHtml(godownLabel(group.godown))}</label>
+                </div>
+            </li>
+            ${group.compartments.map((compartment, ci) => `
+                <li class="ms-4">
+                    <div class="form-check">
+                        <input class="form-check-input dd-check loc-compartment" type="checkbox" data-group="${gi}" data-index="${ci}" id="loc_c_${gi}_${ci}">
+                        <label class="form-check-label" for="loc_c_${gi}_${ci}">${escapeHtml(compartment)}</label>
+                    </div>
+                </li>
+            `).join('')}
+        `).join('');
+
+        // Keep earlier ticks that still exist in the new warehouse selection.
+        previous.forEach(([godown, compartment]) => {
+            const gi = locationGroups.findIndex(g => g.godown === godown);
+            if (gi < 0) return;
+
+            if (compartment === null) {
+                list.querySelectorAll(`input[data-group="${gi}"]`).forEach(cb => { cb.checked = true; });
+            } else {
+                const ci = locationGroups[gi].compartments.indexOf(compartment);
+                const cb = list.querySelector(`#loc_c_${gi}_${ci}`);
+                if (cb) cb.checked = true;
+            }
+        });
+
+        syncLocations();
+    }
+
+    function syncLocations() {
+
+        const list = document.getElementById('locationCheckboxList');
+        const selection = [];
+
+        locationGroups.forEach((group, gi) => {
+            const godownBox = list.querySelector(`#loc_g_${gi}`);
+            const compartmentBoxes = Array.from(list.querySelectorAll(`.loc-compartment[data-group="${gi}"]`));
+            const checked = compartmentBoxes.filter(cb => cb.checked);
+
+            if (compartmentBoxes.length) {
+                godownBox.checked = checked.length === compartmentBoxes.length;
+                godownBox.indeterminate = checked.length > 0 && !godownBox.checked;
+            }
+
+            if (godownBox.checked) {
+                selection.push([group.godown, null]);
+            } else {
+                checked.forEach(cb => selection.push([group.godown, group.compartments[cb.dataset.index]]));
+            }
+        });
+
+        setLocations(selection);
+    }
+
+    function setLocations(selection) {
+
+        const hidden = document.getElementById('locations');
+        const btn = document.getElementById('locationDropdownBtn');
+        const value = selection.length ? JSON.stringify(selection) : '';
+
+        if (document.getElementById('warehouse_code').value) {
+            btn.textContent = selection.length
+                ? selection.map(([g, c]) => c === null ? godownLabel(g) : `${godownLabel(g)} / ${c}`).join(', ')
+                : 'All Godowns / Compartments';
+            btn.title = btn.textContent;
+        }
+
+        if (hidden.value !== value) {
+            hidden.value = value;
+            hidden.dispatchEvent(new Event('change'));
+        }
+    }
+
+    function setupLocationDropdown() {
+
+        document.getElementById('locationCheckboxList').addEventListener('change', e => {
+
+            if (e.target.matches('.loc-godown')) {
+                const gi = e.target.dataset.group;
+                document
+                    .querySelectorAll(`#locationCheckboxList .loc-compartment[data-group="${gi}"]`)
+                    .forEach(cb => { cb.checked = e.target.checked; });
+            }
+
+            if (e.target.matches('input[type="checkbox"]')) {
+                syncLocations();
+            }
+        });
     }
 
 
@@ -898,11 +992,7 @@
             loadLocations();
         });
 
-        setupCheckboxDropdown('godownCheckboxList', 'godown', 'godownDropdownBtn', 'All Godowns', () => {
-            loadLocations(true);
-        });
-
-        setupCheckboxDropdown('compartmentCheckboxList', 'compartment', 'compartmentDropdownBtn', 'All Compartments');
+        setupLocationDropdown();
 
         setupCheckboxDropdown('levelCheckboxList', 'level', 'levelDropdownBtn', 'All Levels');
 
@@ -920,9 +1010,9 @@
                     .reset();
 
                 document.getElementById('regionDropdownBtn').textContent = 'All Regions';
-                document.querySelectorAll('#regionCheckboxList input, #levelCheckboxList input, #godownCheckboxList input, #compartmentCheckboxList input')
+                document.querySelectorAll('#regionCheckboxList input, #levelCheckboxList input, #locationCheckboxList input')
                     .forEach(cb => { cb.checked = false; });
-                ['region_code', 'level', 'godown', 'compartment'].forEach(id => { document.getElementById(id).value = ''; });
+                ['region_code', 'level', 'locations'].forEach(id => { document.getElementById(id).value = ''; });
                 document.getElementById('levelDropdownBtn').textContent = 'All Levels';
 
                 await loadWarehouses('');

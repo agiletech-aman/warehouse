@@ -160,47 +160,47 @@ class ReportController extends Controller
     }
 
     /**
-     * Godown and compartment options for the report filters, narrowed by the selected
-     * region / warehouse / godown. Read from device_latest_status (one row per sensor)
-     * so the readings history table is never scanned for distinct values.
+     * Godown / compartment options for the selected warehouse(s), grouped by godown:
+     * [{godown: 'G1', compartments: ['C1', 'C2']}]. Nothing is returned until a warehouse
+     * is selected. Read from device_latest_status (one row per sensor) so the readings
+     * history table is never scanned for distinct values.
      */
     public function locations(Request $request)
     {
-        $base = DeviceLatestStatus::query();
+        $warehouseCodes = $this->splitMultiValue($request->query('warehouse_code', ''));
 
-        if ($request->filled('region_code')) {
-            $base->whereIn('region_code', $this->splitMultiValue($request->query('region_code')));
-        }
-        if ($request->filled('warehouse_code')) {
-            $base->whereIn('warehouse_code', $this->splitMultiValue($request->query('warehouse_code')));
+        if ($warehouseCodes === []) {
+            return response()->json(['success' => true, 'groups' => []]);
         }
 
-        $distinct = function ($query, string $column): array {
-            return $query
-                ->whereNotNull($column)
-                ->where($column, '!=', '')
-                ->distinct()
-                ->orderBy($column)
-                ->pluck($column)
-                ->map(fn ($v) => trim((string) $v))
-                ->filter(fn ($v) => $v !== '')
-                ->unique()
-                ->values()
-                ->all();
-        };
+        $pairs = DeviceLatestStatus::query()
+            ->whereIn('warehouse_code', $warehouseCodes)
+            ->where(function ($q) {
+                $q->where(fn ($q) => $q->whereNotNull('godown')->where('godown', '!=', ''))
+                    ->orWhere(fn ($q) => $q->whereNotNull('compartment')->where('compartment', '!=', ''));
+            })
+            ->toBase()
+            ->select(['godown', 'compartment'])
+            ->distinct()
+            ->get();
 
-        $godowns = $distinct(clone $base, 'godown');
+        $groups = $pairs
+            ->groupBy(fn ($row) => (string) $row->godown)
+            ->map(fn ($rows, $godown) => [
+                'godown' => (string) $godown,
+                'compartments' => $rows->pluck('compartment')
+                    ->filter(fn ($c) => $c !== null && $c !== '')
+                    ->map(fn ($c) => (string) $c)
+                    ->unique()
+                    ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+                    ->values()
+                    ->all(),
+            ])
+            ->sortBy('godown', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
 
-        $compartmentQuery = clone $base;
-        if ($request->filled('godown')) {
-            $compartmentQuery->whereIn('godown', $this->splitMultiValue($request->query('godown')));
-        }
-
-        return response()->json([
-            'success' => true,
-            'godowns' => $godowns,
-            'compartments' => $distinct($compartmentQuery, 'compartment'),
-        ]);
+        return response()->json(['success' => true, 'groups' => $groups]);
     }
 
     public function export(Request $request, string $format)
@@ -262,8 +262,8 @@ class ReportController extends Controller
             'warehouse_code' => $request->query('warehouse_code'),
             'warehouse_name' => $request->query('warehouse_name'),
 
-            'godown' => $request->query('godown'),
-            'compartment' => $request->query('compartment'),
+            // JSON list of [godown, compartment|null] pairs from the combined filter.
+            'locations' => $request->query('locations'),
 
             'device_type' => $request->query('device_type'),
             'device_code' => $request->query('device_code'), 
@@ -307,12 +307,7 @@ class ReportController extends Controller
             $q->where('warehouse', $filters['warehouse_name']);
         }
 
-        if (!empty($filters['godown'])) {
-            $q->whereIn('godown', $this->splitMultiValue($filters['godown']));
-        }
-        if (!empty($filters['compartment'])) {
-            $q->whereIn('compartment', $this->splitMultiValue($filters['compartment']));
-        }
+        ReportExport::applyLocationFilter($q, $filters['locations'] ?? null);
 
         if (!empty($filters['device_type'])) {
             $q->where('device_type', $filters['device_type']);
@@ -473,12 +468,7 @@ class ReportController extends Controller
             $q->where('warehouse', $filters['warehouse_name']);
         }
 
-        if (!empty($filters['godown'])) {
-            $q->whereIn('godown', $this->splitMultiValue($filters['godown']));
-        }
-        if (!empty($filters['compartment'])) {
-            $q->whereIn('compartment', $this->splitMultiValue($filters['compartment']));
-        }
+        ReportExport::applyLocationFilter($q, $filters['locations'] ?? null);
 
         if (!empty($filters['device_type'])) {
             $q->where('device_type', $filters['device_type']);
