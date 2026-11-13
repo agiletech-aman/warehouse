@@ -34,11 +34,38 @@ class ReportSummaryTest extends TestCase
 
         $this->artisan('devices:mark-stale-offline', ['--minutes' => 30])->assertSuccessful();
 
+        // Current Data Only -> live status from device_latest_status.
+        $this->withSession(['admin_id' => 1])
+            ->getJson('/admin/reports/summary?current_only=1')
+            ->assertOk()
+            ->assertJsonPath('stats.total_devices', 2)
+            ->assertJsonPath('stats.online_devices', 1)
+            ->assertJsonPath('stats.offline_devices', 1);
+
+        // Without it -> counted from readings history, which still says online.
         $this->withSession(['admin_id' => 1])
             ->getJson('/admin/reports/summary')
             ->assertOk()
             ->assertJsonPath('stats.total_devices', 2)
-            ->assertJsonPath('stats.online_devices', 1)
+            ->assertJsonPath('stats.online_devices', 2)
+            ->assertJsonPath('stats.offline_devices', 0);
+    }
+
+    public function test_report_summary_device_count_follows_reading_filters_without_current_only(): void
+    {
+        $this->createReading('DEVICE-1', 'online', now()->subMinute());
+        $this->createReading('DEVICE-1', 'offline', now());
+        Reading::query()->where('sensor_device_id', 'DEVICE-1')->where('status', 'offline')
+            ->update(['level' => 'unknown']);
+        $this->createReading('DEVICE-2', 'online', now());
+
+        // Unknown filter: only DEVICE-1's unknown reading matches -> 1 device, offline.
+        $this->withSession(['admin_id' => 1])
+            ->getJson('/admin/reports/summary?level=unknown')
+            ->assertOk()
+            ->assertJsonPath('stats.total_readings', 1)
+            ->assertJsonPath('stats.total_devices', 1)
+            ->assertJsonPath('stats.online_devices', 0)
             ->assertJsonPath('stats.offline_devices', 1);
     }
 

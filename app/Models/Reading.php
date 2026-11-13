@@ -182,7 +182,8 @@ class Reading extends Model
                 $query->orWhere(function ($query) {
                     $query->whereNull('reading_value')
                         ->orWhereNull('level')
-                        ->orWhereRaw("TRIM(level) = ''");
+                        ->orWhereRaw("TRIM(level) = ''")
+                        ->orWhereRaw("LOWER(TRIM(level)) = 'unknown'");
                 });
             }
         });

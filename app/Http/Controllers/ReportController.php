@@ -33,9 +33,19 @@ class ReportController extends Controller
 
         $totalReadings = (int) ($readingStats->total ?? 0);
 
-        // Count devices from the same projection as the Devices page. Readings keep the status they
-        // arrived with, while devices:mark-stale-offline only updates device_latest_status.
-        $deviceCounts = $this->buildDeviceStatusQuery($filters)
+        // "Current Data Only" -> live device status projection (device_latest_status, kept fresh by
+        // devices:mark-stale-offline). Otherwise devices come from the filtered readings history:
+        // each device counted once, with the status of its latest reading in that history.
+        $deviceCountsSource = !empty($filters['current_only'])
+            ? $this->buildDeviceStatusQuery($filters)->toBase()
+            : Reading::query()->toBase()->whereIn('id', $this->buildReadingsQuery($filters)
+                ->toBase()
+                ->whereNotNull('sensor_device_id')
+                ->where('sensor_device_id', '!=', '')
+                ->selectRaw('MAX(id)')
+                ->groupBy('sensor_device_id'));
+
+        $deviceCounts = $deviceCountsSource
             ->selectRaw('COUNT(*) AS total')
             ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'online' THEN 1 ELSE 0 END) AS online")
             ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'offline' THEN 1 ELSE 0 END) AS offline")
@@ -376,7 +386,7 @@ class ReportController extends Controller
             return response()->json(['success' => true, 'groups' => []]);
         }
 
-        $pairs = DeviceLatestStatus::query()
+        $pairs = Reading::query()
             ->whereIn('warehouse_code', $warehouseCodes)
             ->where(function ($q) {
                 $q->where(fn ($q) => $q->whereNotNull('godown')->where('godown', '!=', ''))
