@@ -268,7 +268,7 @@ class ReportExport implements FromQuery, WithHeadings, WithMapping, WithColumnWi
         }
 
         if (!empty($this->filters['level'])) {
-            $q->whereIn('level', $this->splitMultiValue($this->filters['level']));
+            Reading::applyLevelFilter($q, $this->splitMultiValue($this->filters['level']));
         }
 
         if (!empty($this->filters['current_only'])) {

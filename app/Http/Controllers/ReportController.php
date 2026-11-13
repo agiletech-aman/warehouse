@@ -532,7 +532,7 @@ class ReportController extends Controller
             $q->where('status', $filters['status']);
         }
         if (!empty($filters['level'])) {
-            $q->whereIn('level', $this->splitMultiValue($filters['level']));
+            Reading::applyLevelFilter($q, $this->splitMultiValue($filters['level']));
         }
 
         if (!empty($filters['current_only'])) {
@@ -692,7 +692,7 @@ class ReportController extends Controller
             $q->where('status', $filters['status']);
         }
         if (!empty($filters['level'])) {
-            $q->whereIn('level', $this->splitMultiValue($filters['level']));
+            Reading::applyLevelFilter($q, $this->splitMultiValue($filters['level']));
         }
 
         switch (strtolower((string) ($filters['report_type'] ?? 'reading'))) {

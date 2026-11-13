@@ -141,6 +141,53 @@ class Reading extends Model
         };
     }
 
+    /**
+     * Filter a query (readings or device_latest_status) by normalized level,
+     * matching the same rules as normalizeLevel(), including "unknown".
+     *
+     * @param  array<int, string>  $levels
+     */
+    public static function applyLevelFilter($query, array $levels): void
+    {
+        $levels = array_values(array_unique(array_map(
+            fn ($level) => strtolower(trim((string) $level)),
+            $levels
+        )));
+
+        if ($levels === []) {
+            return;
+        }
+
+        $aliases = [
+            'severe' => ['severe', 'warn', 'warning'],
+            'critical' => ['critical', 'crit'],
+        ];
+
+        $known = [];
+        foreach (array_diff($levels, ['unknown']) as $level) {
+            array_push($known, ...($aliases[$level] ?? [$level]));
+        }
+
+        $includeUnknown = in_array('unknown', $levels, true);
+
+        $query->where(function ($query) use ($known, $includeUnknown) {
+            if ($known !== []) {
+                $query->where(function ($query) use ($known) {
+                    $query->whereNotNull('reading_value')
+                        ->whereIn(DB::raw('LOWER(TRIM(level))'), $known);
+                });
+            }
+
+            if ($includeUnknown) {
+                $query->orWhere(function ($query) {
+                    $query->whereNull('reading_value')
+                        ->orWhereNull('level')
+                        ->orWhereRaw("TRIM(level) = ''");
+                });
+            }
+        });
+    }
+
     public static function normalizeLevel(mixed $readingValue, mixed $level): string
     {
         if ($readingValue === null || $readingValue === '' || !is_numeric($readingValue)) {

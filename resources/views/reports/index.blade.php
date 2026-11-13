@@ -231,6 +231,12 @@
                                         <label class="form-check-label" for="level_critical">Critical</label>
                                     </div>
                                 </li>
+                                <li>
+                                    <div class="form-check">
+                                        <input class="form-check-input dd-check" type="checkbox" value="unknown" data-label="Unknown" id="level_unknown">
+                                        <label class="form-check-label" for="level_unknown">Unknown</label>
+                                    </div>
+                                </li>
                             </ul>
                         </div>
 
