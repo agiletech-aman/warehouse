@@ -333,19 +333,39 @@ class ReadingController extends Controller
                 }
             }
 
-                        // Unknown-level readings: first one creates a row (so the sensor
-            // has a history baseline); every unknown after that just touches
-            // the timestamp on the last reading instead of creating a new row.
-            if ($storedLevel === 'unknown') {
+            // Unknown readings (no usable value, or no level) keep exactly one
+            // row per sensor: the first one is inserted, every later unknown
+            // updates that same unknown row. Same rule as Reading::normalizeLevel().
+            $hasNumericValue = $readingValue !== null && $readingValue !== '' && is_numeric($readingValue);
+            $isUnknown = !$hasNumericValue || $storedLevel === null || $storedLevel === 'unknown';
+
+            if ($isUnknown) {
+                $storedLevel = 'unknown';
+                $row['level'] = 'unknown';
+                $row['reading_value'] = $hasNumericValue ? $readingValue : null;
+                if (!$hasNumericValue) {
+                    $row['status'] = 'offline';
+                }
+            }
+
+            if ($isUnknown && !empty($row['sensor_device_id'])) {
+                // Only reuse an existing *unknown* row — never overwrite a real
+                // normal/severe/critical reading of this sensor.
                 $existingReading = Reading::where('sensor_device_id', $row['sensor_device_id'])
                     ->where('key', $row['key'])
+                    ->where(function ($query) {
+                        $query->whereNull('reading_value')
+                            ->orWhereNull('level')
+                            ->orWhere('level', '')
+                            ->orWhere('level', 'unknown');
+                    })
                     ->orderByDesc('id')
                     ->first();
 
                 if ($existingReading) {
                     $existingReading->recorded_at = $row['recorded_at'];
-                     $existingReading->status = 'offline';
-                    $existingReading->reading_value = null;
+                    $existingReading->status = $row['status'];
+                    $existingReading->reading_value = $row['reading_value'];
                     $existingReading->level = 'unknown';
                     $existingReading->save();
 

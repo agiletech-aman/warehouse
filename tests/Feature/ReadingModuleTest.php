@@ -178,6 +178,38 @@ class ReadingModuleTest extends TestCase
         $this->assertSame(2, Reading::count());
     }
 
+    public function test_unknown_readings_keep_one_row_per_device_and_never_overwrite_real_readings(): void
+    {
+        Mail::fake();
+
+        $payload = fn ($value, ?string $level = null) => [
+            'key' => 'test-key',
+            'readings' => [array_filter([
+                'device_id' => 'PH3_172_22_41_24_1',
+                'device_name' => 'PH3-7',
+                'device_type' => 'PH3',
+                'device_ip' => '172.22.41.24',
+                'unit' => 'ppm',
+                'value' => $value,
+                'level' => $level,
+                'status' => 'online',
+            ], fn ($v) => $v !== null)],
+        ];
+
+        $this->postJson('/api/readings', $payload(0.1))->assertOk();   // normal
+        $this->postJson('/api/readings', $payload(null))->assertOk();  // unknown -> new row
+        $this->postJson('/api/readings', $payload(null))->assertOk();  // unknown -> update
+        $this->postJson('/api/readings', $payload(null, 'unknown'))->assertOk(); // unknown -> update
+
+        $this->assertSame(2, Reading::count());
+        $this->assertSame(1, Reading::where('level', 'normal')->count());
+        $this->assertEquals(0.1, (float) Reading::where('level', 'normal')->value('reading_value'));
+
+        $unknown = Reading::where('level', 'unknown')->sole();
+        $this->assertNull($unknown->reading_value);
+        $this->assertSame('offline', $unknown->status);
+    }
+
     /**
      * @return array<string, array{0: string, 1: float, 2: string}>
      */
