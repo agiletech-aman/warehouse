@@ -223,10 +223,23 @@
             </div>
         </form>
 
+        <div id="bulkDeleteBar" class="d-none align-items-center justify-content-between gap-2 bg-light border rounded-3 px-3 py-2 mb-3">
+            <span class="fw-semibold"><span id="selectedDeviceCount">0</span> device(s) selected</span>
+            <div class="d-flex gap-2">
+                <button type="button" id="clearDeviceSelection" class="btn btn-outline-secondary btn-sm rounded-pill px-3">Clear</button>
+                <button type="button" class="btn btn-danger btn-sm rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#bulkDeleteDeviceModal">
+                    <i class="fa-solid fa-trash me-1"></i> Delete Selected
+                </button>
+            </div>
+        </div>
+
         <div class="table-responsive">
             <table id="devicesTable" class="table table-hover align-middle mb-0">
                 <thead>
                     <tr>
+                        <th class="text-center" style="width: 40px;">
+                            <input type="checkbox" class="form-check-input" id="selectAllDevices" aria-label="Select all devices on this page">
+                        </th>
                         <th>Code</th>
                         <th>Name</th>
                         <th>Region</th>
@@ -287,6 +300,48 @@
     </div>
 </div>
 
+<div class="modal fade" id="bulkDeleteDeviceModal" tabindex="-1" aria-labelledby="bulkDeleteDeviceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <form id="bulkDeleteDeviceForm" method="POST" action="{{ route('devices.bulk-destroy') }}">
+                @csrf
+                @method('DELETE')
+                <div id="bulkDeleteDeviceInputs"></div>
+
+                <div class="modal-header border-0 pb-0 px-4 pt-4">
+                    <h5 class="modal-title fw-bold" id="bulkDeleteDeviceModalLabel">Delete Selected Devices</h5>
+                    <button type="button" class="btn-close shadow-none" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body px-4 pt-3 pb-2">
+                    <p class="mb-3 text-muted">
+                        Are you sure you want to delete
+                        <strong class="text-dark"><span id="bulkDeleteDeviceCount">0</span> selected device(s)</strong>?
+                    </p>
+
+                    <div class="alert alert-danger d-flex align-items-start gap-2 rounded-3 mb-0 py-3">
+                        <i class="fas fa-exclamation-triangle mt-1"></i>
+                        <div>
+                            <strong>Warning:</strong>
+                            This will permanently delete the selected devices and all associated readings.
+                            This action cannot be undone.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer border-0 px-4 pb-4 pt-3">
+                    <button type="button" class="btn btn-light border rounded-pill px-4" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-danger rounded-pill px-4">
+                        <i class="fa-solid fa-trash me-1"></i> Delete Selected
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
 
 @section('scripts')
@@ -315,6 +370,77 @@
         if (deleteModal && deleteModal.parentElement !== document.body) {
             document.body.appendChild(deleteModal);
         }
+
+        // ---- Multi-select bulk delete ----
+        const selectedDevices = new Set();
+        const bulkDeleteModal = document.getElementById('bulkDeleteDeviceModal');
+        const bulkDeleteBar = document.getElementById('bulkDeleteBar');
+        const selectAllCheckbox = document.getElementById('selectAllDevices');
+
+        if (bulkDeleteModal && bulkDeleteModal.parentElement !== document.body) {
+            document.body.appendChild(bulkDeleteModal);
+        }
+
+        const pageCheckboxes = function() {
+            return Array.from(document.querySelectorAll('#devicesTable tbody .device-select'));
+        };
+
+        const refreshSelectionUi = function() {
+            const count = selectedDevices.size;
+            document.getElementById('selectedDeviceCount').textContent = count;
+            bulkDeleteBar.classList.toggle('d-none', count === 0);
+            bulkDeleteBar.classList.toggle('d-flex', count > 0);
+
+            const boxes = pageCheckboxes();
+            const checkedOnPage = boxes.filter(function(box) { return box.checked; }).length;
+            selectAllCheckbox.checked = boxes.length > 0 && checkedOnPage === boxes.length;
+            selectAllCheckbox.indeterminate = checkedOnPage > 0 && checkedOnPage < boxes.length;
+        };
+
+        document.getElementById('devicesTable').addEventListener('change', function(event) {
+            const box = event.target;
+            if (!box.classList || !box.classList.contains('device-select')) return;
+
+            box.checked ? selectedDevices.add(box.value) : selectedDevices.delete(box.value);
+            refreshSelectionUi();
+        });
+
+        selectAllCheckbox.addEventListener('click', function(event) {
+            event.stopPropagation();
+        });
+
+        selectAllCheckbox.addEventListener('change', function() {
+            const checked = selectAllCheckbox.checked;
+            pageCheckboxes().forEach(function(box) {
+                box.checked = checked;
+                checked ? selectedDevices.add(box.value) : selectedDevices.delete(box.value);
+            });
+            refreshSelectionUi();
+        });
+
+        document.getElementById('clearDeviceSelection').addEventListener('click', function() {
+            selectedDevices.clear();
+            pageCheckboxes().forEach(function(box) { box.checked = false; });
+            refreshSelectionUi();
+        });
+
+        bulkDeleteModal.addEventListener('show.bs.modal', function(event) {
+            if (selectedDevices.size === 0) {
+                event.preventDefault();
+                return;
+            }
+
+            const container = document.getElementById('bulkDeleteDeviceInputs');
+            container.innerHTML = '';
+            selectedDevices.forEach(function(id) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'device_ids[]';
+                input.value = id;
+                container.appendChild(input);
+            });
+            document.getElementById('bulkDeleteDeviceCount').textContent = selectedDevices.size;
+        });
 
         if (deleteModal && deleteForm && deleteDeviceName) {
             deleteModal.addEventListener('show.bs.modal', function(event) {
@@ -350,6 +476,19 @@
                 }
             },
             columns: [
+                {
+                    data: 'id',
+                    orderable: false,
+                    searchable: false,
+                    className: 'text-center',
+                    responsivePriority: 1,
+                    render: function(value, type, row) {
+                        if (!value) return '';
+                        const checked = selectedDevices.has(String(value)) ? ' checked' : '';
+                        return '<input type="checkbox" class="form-check-input device-select" value="' + escapeText(value) + '"' +
+                            checked + ' aria-label="Select ' + escapeText(row.delete_label || value) + '">';
+                    }
+                },
                 { data: 'code', defaultContent: '-', render: escapeText },
                 { data: 'name', defaultContent: '-', render: escapeText },
                 {
@@ -423,6 +562,8 @@
                 }
             ]
         });
+
+        table.on('draw.dt', refreshSelectionUi);
 
         table.on('search.dt', function () {
             const search = table.search();

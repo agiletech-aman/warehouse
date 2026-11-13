@@ -41,6 +41,8 @@ Route::get('/warehouses/data', [WarehouseController::class, 'data'])->name('ware
 Route::resource('warehouses', WarehouseController::class);
 Route::delete('/devices/reading/{reading}', [DeviceController::class, 'destroyReadingDevice'])
     ->name('devices.reading-destroy');
+Route::delete('/devices/bulk-destroy', [DeviceController::class, 'bulkDestroyReadingDevices'])
+    ->name('devices.bulk-destroy');
 Route::get('/devices/export', [DeviceController::class, 'export'])->name('devices.export');
 Route::get('/devices/detailed-summary/export', [DeviceController::class, 'detailedSummaryExport'])
     ->name('devices.detailed-summary.export');

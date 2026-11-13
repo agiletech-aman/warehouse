@@ -209,6 +209,7 @@ class DeviceController extends Controller
             ])
             ->map(function (DeviceLatestStatus $reading) {
                 return [
+                    'id' => $reading->sensor_device_id,
                     'code' => $reading->sensor_device_id ?: '-',
                     'name' => $reading->device_name ?: '-',
                     'region' => $reading->region ?: ($reading->region_code ?: '-'),
@@ -368,6 +369,33 @@ class DeviceController extends Controller
         }
 
         return redirect()->back()->with('success', $deletedReadings . ' reading(s) deleted successfully.');
+    }
+
+    public function bulkDestroyReadingDevices(Request $request)
+    {
+        $validated = $request->validate([
+            'device_ids' => 'required|array|min:1|max:1000',
+            'device_ids.*' => 'required|string|max:255',
+        ]);
+
+        $sensorDeviceIds = collect($validated['device_ids'])
+            ->map(fn ($id) => trim((string) $id))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $deletedReadings = 0;
+
+        foreach (array_chunk($sensorDeviceIds, 200) as $chunk) {
+            $deletedReadings += Reading::query()->whereIn('sensor_device_id', $chunk)->delete();
+            DeviceLatestStatus::query()->whereIn('sensor_device_id', $chunk)->delete();
+        }
+
+        return redirect()->back()->with(
+            'success',
+            count($sensorDeviceIds) . ' device(s) and ' . $deletedReadings . ' reading(s) deleted successfully.'
+        );
     }
 
     private function applyDataTableSearch($query, Request $request): void
