@@ -52,6 +52,7 @@ Route::get('/master-alerts/summary', [MasterAlertController::class, 'summaryApi'
 Route::post('/master-alert-summary', [MasterAlertController::class, 'storeSummaryApi']);
 Route::get('/master-alert-summary/dashboard/{warehouseNmsId?}', [MasterAlertController::class, 'dashboardApi'])
     ->where('warehouseNmsId', '[0-9]+');
+Route::get('/master-alert-summary/cwc-dashboard', [MasterAlertController::class, 'cwcDashboardApi']);
 Route::get('/master-alerts/devices', [MasterAlertController::class, 'devicesApi']);
 Route::get('/master-alerts/devices/{warehouseNmsId}', [MasterAlertController::class, 'devicesApi']);
 Route::get('/master-alerts/states', [MasterAlertController::class, 'statesApi']);

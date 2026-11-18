@@ -155,7 +155,46 @@ class AlertController extends Controller
     );
 }
 
-public function statesApi(): JsonResponse
+    /**
+     * GET /api/master-alert-summary/cwc-dashboard
+     *     -> all-warehouse dashboard
+     *
+     * GET /api/master-alert-summary/cwc-dashboard?cwcCode=XXXX
+     *     -> dashboard for the warehouse whose cwc_code matches
+     */
+    public function cwcDashboardApi(Request $request, MasterAlertSummaryService $summaryService): JsonResponse
+    {
+        $validated = $request->validate([
+            'cwcCode' => 'nullable|string|max:100',
+            'location' => 'nullable|string|max:150',
+            'state' => 'nullable|string|max:100',
+            'fromDate' => 'nullable|date',
+            'toDate' => 'nullable|date|after_or_equal:fromDate',
+        ]);
+
+        $cwcCode = trim((string) ($validated['cwcCode'] ?? ''));
+        unset($validated['cwcCode']);
+
+        if ($cwcCode !== '') {
+            $warehouse = Warehouse::query()
+                ->where('cwc_code', $cwcCode)
+                ->first();
+
+            if (! $warehouse) {
+                return response()->json([
+                    'message' => 'Warehouse not found.',
+                    'cwcCode' => $cwcCode,
+                ], 404);
+            }
+
+            // Filter dashboard using the warehouse code resolved from the CWC code.
+            $validated['warehouseCode'] = $warehouse->warehouse_code;
+        }
+
+        return response()->json($summaryService->fetchDashboard($validated));
+    }
+
+    public function statesApi(): JsonResponse
     {
         $states = Region::query()
             ->whereNotNull('frs_id')
