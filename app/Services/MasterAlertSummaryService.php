@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DeviceLatestStatus;
 use App\Models\Reading;
+use App\Models\Warehouse;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
@@ -100,6 +101,7 @@ class MasterAlertSummaryService
 
         $locationRows = (clone $base)
             ->select(['region', 'warehouse'])
+            ->selectRaw('MAX(warehouse_code) as warehouse_code')
             ->selectRaw('COUNT(*) as total_iot_devices')
             ->selectRaw("SUM(CASE WHEN {$gas} = 'co2' THEN 1 ELSE 0 END) as total_sensors_co2")
             ->selectRaw("SUM(CASE WHEN {$gas} = 'ph3' THEN 1 ELSE 0 END) as total_sensors_ph3")
@@ -117,9 +119,16 @@ class MasterAlertSummaryService
             ->orderBy('warehouse')
             ->get();
 
+        $cwcCodes = $this->cwcCodeLookup($locationRows);
+
         $locationWise = [];
         foreach ($locationRows as $row) {
+            $code = $this->normalizeCode($row->warehouse_code);
+            $cwcCode = ($code !== '' ? ($cwcCodes['codes'][$code] ?? null) : null)
+                ?? ($cwcCodes['names'][strtolower(trim((string) $row->warehouse))] ?? null);
+
             $locationWise[$this->locationKey($row->warehouse, $row->region)] = [
+                'cwcCode' => $cwcCode,
                 'state' => $row->region,
                 'totalIotDevices' => (int) $row->total_iot_devices,
                 'totalSensorsCO2' => (int) $row->total_sensors_co2,
@@ -191,6 +200,59 @@ class MasterAlertSummaryService
     private function gasSql(): string
     {
         return "LOWER(REPLACE(REPLACE(device_type, '₂', '2'), '₃', '3'))";
+    }
+
+    /**
+     * CWC codes from the warehouse master, keyed by normalized warehouse_code
+     * and by lowercased warehouse_name.
+     *
+     * @return array{codes: array<string, string|null>, names: array<string, string|null>}
+     */
+    private function cwcCodeLookup(iterable $rows): array
+    {
+        $codes = [];
+        $names = [];
+        foreach ($rows as $row) {
+            if (($code = $this->normalizeCode($row->warehouse_code)) !== '') {
+                $codes[$code] = true;
+            }
+            if (($name = trim((string) $row->warehouse)) !== '') {
+                $names[$name] = true;
+            }
+        }
+
+        if ($codes === [] && $names === []) {
+            return ['codes' => [], 'names' => []];
+        }
+
+        $warehouses = Warehouse::query()
+            ->where(function (Builder $query) use ($codes, $names) {
+                if ($codes !== []) {
+                    $query->orWhereRaw(
+                        "UPPER(REPLACE(TRIM(warehouse_code), '-', '')) IN (".implode(',', array_fill(0, count($codes), '?')).')',
+                        array_keys($codes)
+                    );
+                }
+                if ($names !== []) {
+                    $query->orWhereIn('warehouse_name', array_keys($names));
+                }
+            })
+            ->get(['warehouse_code', 'warehouse_name', 'cwc_code']);
+
+        $lookup = ['codes' => [], 'names' => []];
+        foreach ($warehouses as $warehouse) {
+            if (($code = $this->normalizeCode($warehouse->warehouse_code)) !== '') {
+                $lookup['codes'][$code] = $warehouse->cwc_code;
+            }
+            $lookup['names'][strtolower(trim((string) $warehouse->warehouse_name))] = $warehouse->cwc_code;
+        }
+
+        return $lookup;
+    }
+
+    private function normalizeCode(?string $code): string
+    {
+        return strtoupper(str_replace('-', '', trim((string) $code)));
     }
 
     private function locationKey(?string $location, ?string $state): string
