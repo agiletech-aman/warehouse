@@ -241,6 +241,20 @@ class ReadingController extends Controller
 
         foreach ($request->readings as $index => $reading) {
             $readingValue = $reading['value'] ?? null;
+
+            // PH3 devices sometimes send whole two-digit values (10, 20, 60...)
+            // that really mean 0.10, 0.20, 0.60. Scale only those; decimals
+            // like 0.1 or 0.13 are stored as received.
+            if (
+                strtoupper(trim((string) ($reading['device_type'] ?? ''))) === 'PH3'
+                && is_numeric($readingValue)
+                && (float) $readingValue == (int) $readingValue
+                && (int) $readingValue >= 10
+                && (int) $readingValue <= 99
+            ) {
+                $readingValue = (int) $readingValue / 100;
+            }
+
             $incomingLevel = null;
             $incomingLevelKey = null;
 
