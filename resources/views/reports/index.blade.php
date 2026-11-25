@@ -300,7 +300,7 @@
                             </div>
 
                             <h3 id="stat_total_readings">
-                                0
+                                -
                             </h3>
                         </div>
                     </div>
@@ -314,7 +314,7 @@
                             </div>
 
                             <h3 id="stat_total_devices">
-                                0
+                                -
                             </h3>
                         </div>
                     </div>
@@ -328,7 +328,7 @@
                             </div>
 
                             <h3 id="stat_online_devices">
-                                0
+                                -
                             </h3>
                         </div>
                     </div>
@@ -342,7 +342,7 @@
                             </div>
 
                             <h3 id="stat_offline_devices">
-                                0
+                                -
                             </h3>
                         </div>
                     </div>
@@ -871,7 +871,7 @@
 
         if (!appliedFilters) {
             if (summaryAbort) summaryAbort.abort();
-            STAT_IDS.forEach(id => { document.getElementById(id).textContent = 0; });
+            STAT_IDS.forEach(id => { document.getElementById(id).textContent = '-'; });
             return;
         }
 
@@ -880,7 +880,11 @@
         // A newer Apply replaces this request.
         if (summaryAbort) summaryAbort.abort();
         summaryAbort = new AbortController();
-        setAll('...');
+        STAT_IDS.forEach(id => {
+            document.getElementById(id).innerHTML =
+                '<span class="spinner-border spinner-border-sm text-primary" role="status"></span>' +
+                '<span class="fs-6 fw-normal text-muted ms-2">Loading...</span>';
+        });
 
         let payload;
         try {
