@@ -106,7 +106,7 @@ class ReportController extends Controller
     public function data(Request $request)
     {
         $draw = (int) $request->query('draw', 1);
-        $start = (int) $request->query('start', 0);
+        $start = max((int) $request->query('start', 0), 0);
         $length = (int) $request->query('length', 10);
         if ($length <= 0) {
             $length = 10;
@@ -117,13 +117,10 @@ class ReportController extends Controller
         $readingsBase = $this->buildReadingsQuery($filters);
         $this->applyDataTableSearch($readingsBase, $request);
 
-        $recordsTotal = Reading::query()->count();
-        $recordsFiltered = (clone $readingsBase)->count();
-
         $data = $readingsBase
             ->latest('recorded_at')
             ->offset($start)
-            ->limit($length)
+            ->limit($length + 1)
             ->get([
                 'recorded_at',
                 'region',
@@ -140,7 +137,11 @@ class ReportController extends Controller
                 'unit',
                 'level',
                 'status',
-            ])
+            ]);
+
+        // One extra row was requested only to know whether a next page exists.
+        $hasMore = $data->count() > $length;
+        $data = $data->take($length)
             ->map(function ($r) {
                 return [
                     'date_time' => $r->recorded_at ? $r->recorded_at->format('d M Y H:i:s') : '-',
@@ -162,10 +163,13 @@ class ReportController extends Controller
                 ];
             });
 
+        // No COUNT: "records" is only what is known so far, plus one when a next page exists.
+        $knownRecords = $start + $data->count() + ($hasMore ? 1 : 0);
+
         return response()->json([
             'draw' => $draw,
-            'recordsTotal' => $recordsTotal,
-            'recordsFiltered' => $recordsFiltered,
+            'recordsTotal' => $knownRecords,
+            'recordsFiltered' => $knownRecords,
             'data' => $data,
         ]);
     }

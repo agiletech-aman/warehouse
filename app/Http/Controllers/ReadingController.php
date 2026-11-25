@@ -39,14 +39,11 @@ class ReadingController extends Controller
         $query = $this->lastMonthReadings();
         $this->applyDataTableSearch($query, $request);
 
-        $recordsTotal = $this->lastMonthReadings()->count();
-        $recordsFiltered = (clone $query)->count();
-
         $readings = $query
             ->latest('recorded_at')
             ->latest('id')
             ->offset($start)
-            ->limit($length)
+            ->limit($length + 1)
             ->get([
                 'id',
                 'device_name',
@@ -63,7 +60,11 @@ class ReadingController extends Controller
                 'level',
                 'status',
                 'recorded_at',
-            ])
+            ]);
+
+        // One extra row was requested only to know whether a next page exists.
+        $hasMore = $readings->count() > $length;
+        $readings = $readings->take($length)
             ->map(function (Reading $reading) {
                 return [
                     'device' => $reading->device_name ?: '-',
@@ -82,10 +83,13 @@ class ReadingController extends Controller
                 ];
             });
 
+        // No COUNT: "records" is only what is known so far, plus one when a next page exists.
+        $knownRecords = $start + $readings->count() + ($hasMore ? 1 : 0);
+
         return response()->json([
             'draw' => $draw,
-            'recordsTotal' => $recordsTotal,
-            'recordsFiltered' => $recordsFiltered,
+            'recordsTotal' => $knownRecords,
+            'recordsFiltered' => $knownRecords,
             'data' => $readings,
         ]);
     }

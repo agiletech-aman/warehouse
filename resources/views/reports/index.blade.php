@@ -912,6 +912,7 @@
             processing: true,
             serverSide: true,
             paging: true,
+            pagingType: 'simple', // Previous / Next only: the server does not count rows
             info: true,
             lengthChange: true,
             scrollX: true,
@@ -926,7 +927,7 @@
                 className: 'btn btn-secondary rounded-pill'
             }],
 
-            language: { emptyTable: APPLY_HINT },
+            language: { emptyTable: APPLY_HINT, info: 'Showing _START_ to _END_', infoEmpty: '' },
 
             ajax: function(d, callback, settings) {
 

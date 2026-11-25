@@ -107,12 +107,15 @@
             processing: true,
             serverSide: true,
             paging: true,
+            pagingType: 'simple', // Previous / Next only: the server does not count rows
             info: true,
             pageLength: 10,
             search: { search: new URLSearchParams(window.location.search).get('search') || '' },
             order: [],
             language: {
-                search: 'Search readings:'
+                search: 'Search readings:',
+                info: 'Showing _START_ to _END_',
+                infoEmpty: ''
             },
             ajax: {
                 url: '{{ route('readings.data') }}'
