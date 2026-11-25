@@ -42,3 +42,8 @@ Schedule::command('readings:delete-unknown')
     ->sundays()
     ->at('03:00')
     ->onOneServer();
+
+// Counts shown on the readings page.
+Schedule::command('readings:refresh-stats')
+    ->everyTenMinutes()
+    ->withoutOverlapping(30);

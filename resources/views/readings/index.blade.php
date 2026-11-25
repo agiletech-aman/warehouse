@@ -8,7 +8,7 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div>
                 <h3 class="mb-1">Readings</h3>
-                <p class="text-muted mb-0">Sensor readings from the last 1 month.</p>
+                <p class="text-muted mb-0">Monitor all sensor readings from devices.</p>
             </div>
 
         </div>
@@ -21,15 +21,15 @@
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm p-4 h-100">
                     <div class="text-muted small text-uppercase">Total Readings</div>
-                    <div class="display-6 fw-bold mt-2" data-count="total">...</div>
-                    <p class="text-muted mb-0">Last 1 month readings.</p>
+                    <div class="display-6 fw-bold mt-2">{{ $readingStats ? number_format($readingStats->total) : '-' }}</div>
+                    <p class="text-muted mb-0">All sensor readings.</p>
                 </div>
             </div>
 
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm p-4 h-100">
                     <div class="text-muted small text-uppercase">Normal</div>
-                    <div class="display-6 fw-bold mt-2" data-count="normal">...</div>
+                    <div class="display-6 fw-bold mt-2">{{ $readingStats ? number_format($readingStats->normal) : '-' }}</div>
                     <p class="text-muted mb-0">Normal level readings.</p>
                 </div>
             </div>
@@ -37,7 +37,7 @@
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm p-4 h-100">
                     <div class="text-muted small text-uppercase">Severe</div>
-                    <div class="display-6 fw-bold mt-2" data-count="severe">...</div>
+                    <div class="display-6 fw-bold mt-2">{{ $readingStats ? number_format($readingStats->severe) : '-' }}</div>
                     <p class="text-muted mb-0">Severe level readings.</p>
                 </div>
             </div>
@@ -45,7 +45,7 @@
             <div class="col-md-3">
                 <div class="card border-0 shadow-sm p-4 h-100">
                     <div class="text-muted small text-uppercase">Critical</div>
-                    <div class="display-6 fw-bold mt-2" data-count="critical">...</div>
+                    <div class="display-6 fw-bold mt-2">{{ $readingStats ? number_format($readingStats->critical) : '-' }}</div>
                     <p class="text-muted mb-0">Critical level readings.</p>
                 </div>
             </div>
@@ -181,13 +181,6 @@
                 { data: 'recorded_at', defaultContent: '-', render: escapeText }
             ]
         });
-
-        fetch('{{ route('readings.counts') }}', { headers: { Accept: 'application/json' } })
-            .then(response => response.ok ? response.json() : Promise.reject(response.status))
-            .then(counts => document.querySelectorAll('[data-count]').forEach(el => {
-                el.textContent = Number(counts[el.dataset.count] ?? 0).toLocaleString('en-US');
-            }))
-            .catch(() => document.querySelectorAll('[data-count]').forEach(el => { el.textContent = '-'; }));
 
     });
 </script>

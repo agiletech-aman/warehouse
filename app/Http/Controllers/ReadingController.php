@@ -5,33 +5,17 @@ namespace App\Http\Controllers;
 use App\Models\Alert;
 use App\Models\Device;
 use App\Models\Reading;
-use Illuminate\Database\Eloquent\Builder;
+use App\Models\ReadingStat;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 
 class ReadingController extends Controller
 {
     public function index()
     {
-        return view('readings.index');
-    }
+        // Counts come from reading_stats (readings:refresh-stats); the readings table is never counted here.
+        $readingStats = ReadingStat::query()->find(1);
 
-    // Loaded after the page opens: counting a month of readings is slow on a big table.
-    public function counts()
-    {
-        $counts = Cache::remember('readings.last_month_counts', now()->addMinutes(5), function () {
-            $row = $this->lastMonthReadings()
-                ->toBase()
-                ->selectRaw('COUNT(*) AS total')
-                ->selectRaw("SUM(CASE WHEN level = 'normal' OR level IS NULL OR level = '' THEN 1 ELSE 0 END) AS normal")
-                ->selectRaw("SUM(CASE WHEN level = 'severe' THEN 1 ELSE 0 END) AS severe")
-                ->selectRaw("SUM(CASE WHEN level = 'critical' THEN 1 ELSE 0 END) AS critical")
-                ->first();
-
-            return array_map('intval', (array) $row);
-        });
-
-        return response()->json($counts);
+        return view('readings.index', compact('readingStats'));
     }
 
     public function data(Request $request)
@@ -44,11 +28,11 @@ class ReadingController extends Controller
             $length = 10;
         }
 
-        $query = $this->lastMonthReadings();
+        $query = Reading::query();
         $this->applyDataTableSearch($query, $request);
 
         $readings = $query
-            // recorded_at only: adding id stops the index order being used and sorts the whole month.
+            // recorded_at only: adding id stops the index order being used and sorts the whole table.
             ->latest('recorded_at')
             ->offset($start)
             ->limit($length + 1)
@@ -149,12 +133,6 @@ class ReadingController extends Controller
         $reading->delete();
 
         return redirect()->route('readings.index')->with('success', 'Reading deleted successfully.');
-    }
-
-    // The readings list only shows the last month; older rows stay in the database.
-    private function lastMonthReadings(): Builder
-    {
-        return Reading::query()->where('recorded_at', '>=', now()->subMonthNoOverflow());
     }
 
     private function applyDataTableSearch($query, Request $request): void
