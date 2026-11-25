@@ -863,29 +863,44 @@
 
     const STAT_IDS = ['stat_total_readings', 'stat_total_devices', 'stat_online_devices', 'stat_offline_devices'];
     let summaryRequestId = 0;
+    let summaryAbort = null;
 
     async function refreshSummary() {
 
         const requestId = ++summaryRequestId;
 
         if (!appliedFilters) {
+            if (summaryAbort) summaryAbort.abort();
             STAT_IDS.forEach(id => { document.getElementById(id).textContent = 0; });
             return;
         }
 
-        const response = await fetch(
-            '{{ url("/admin/reports/summary") }}?' +
-            appliedFilters
-        );
+        const setAll = text => STAT_IDS.forEach(id => { document.getElementById(id).textContent = text; });
 
-        if (!response.ok) {
-            console.error('Report summary failed with status', response.status);
+        // A newer Apply replaces this request.
+        if (summaryAbort) summaryAbort.abort();
+        summaryAbort = new AbortController();
+        setAll('...');
+
+        let payload;
+        try {
+            const response = await fetch(
+                '{{ url("/admin/reports/summary") }}?cards_only=1&' + appliedFilters,
+                { signal: summaryAbort.signal }
+            );
+
+            if (!response.ok) throw new Error('status ' + response.status);
+            payload = await response.json();
+            if (!payload.success) throw new Error('not successful');
+        } catch (e) {
+            if (requestId === summaryRequestId) {
+                console.error('Report summary failed:', e);
+                setAll('-');
+            }
             return;
         }
 
-        const payload = await response.json();
-
-        if (requestId !== summaryRequestId || !payload.success) return;
+        if (requestId !== summaryRequestId) return;
 
         const setStat = (id, value) => {
             const element = document.getElementById(id);
@@ -896,10 +911,6 @@
         setStat('stat_total_devices', payload.stats.total_devices);
         setStat('stat_online_devices', payload.stats.online_devices);
         setStat('stat_offline_devices', payload.stats.offline_devices);
-        setStat('stat_severe_alerts', payload.stats.severe_alerts);
-        setStat('stat_critical_alerts', payload.stats.critical_alerts);
-        setStat('stat_regions_count', payload.stats.regions_count);
-        setStat('stat_warehouses_count', payload.stats.warehouses_count);
     }
 
 

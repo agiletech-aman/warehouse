@@ -115,6 +115,27 @@ class ReportSummaryTest extends TestCase
             ->assertJsonPath('charts.online_vs_offline_devices.online', 1);
     }
 
+    public function test_report_cards_match_the_full_summary(): void
+    {
+        $this->createReading('DEVICE-1', 'offline', now()->subMinute());
+        $this->createReading('DEVICE-1', 'online', now());
+        $this->createReading('DEVICE-2', 'offline', now());
+        $this->createReading('DEVICE-3', 'online', now()->subDays(3));
+        Reading::query()->where('sensor_device_id', 'DEVICE-3')->update(['level' => 'unknown']);
+
+        $today = now()->toDateString();
+        $keys = ['total_readings', 'total_devices', 'online_devices', 'offline_devices'];
+
+        foreach (['', 'level=unknown', 'current_only=1', "from_date={$today}", 'region_code=NORTH', 'region_code=NONE'] as $filter) {
+            $full = $this->withSession(['admin_id' => 1])
+                ->getJson('/admin/reports/summary?' . $filter)->assertOk()->json('stats');
+            $cards = $this->withSession(['admin_id' => 1])
+                ->getJson('/admin/reports/summary?cards_only=1&' . $filter)->assertOk()->json('stats');
+
+            $this->assertSame(array_intersect_key($full, array_flip($keys)), $cards, "filter: {$filter}");
+        }
+    }
+
     private function createReading(string $deviceId, string $status, $recordedAt): void
     {
         Reading::create([

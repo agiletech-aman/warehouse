@@ -23,6 +23,14 @@ class ReportController extends Controller
     {
         $filters = $this->extractFilters($request);
 
+        // The reports page only shows four cards, so it skips the distinct-location and alert counts.
+        if ($request->boolean('cards_only')) {
+            return response()->json([
+                'success' => true,
+                'stats' => $this->cardStats($filters),
+            ]);
+        }
+
         // One scan for all reading stats: this request has to finish inside PHP-FPM's 60s limit.
         $readingStats = $this->buildReadingsQuery($filters)
             ->toBase()
@@ -101,6 +109,63 @@ class ReportController extends Controller
             ],
             'charts' => $charts,
         ]);
+    }
+
+    /**
+     * The four cards of the reports page, live for the given filters. The readings are scanned
+     * once, grouped per device; same rules as the full summary.
+     */
+    private function cardStats(array $filters): array
+    {
+        // "Current Data Only": devices come from the live device status projection.
+        if (!empty($filters['current_only'])) {
+            $devices = $this->buildDeviceStatusQuery($filters)
+                ->toBase()
+                ->selectRaw('COUNT(*) AS total')
+                ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'online' THEN 1 ELSE 0 END) AS online")
+                ->selectRaw("SUM(CASE WHEN LOWER(COALESCE(status, '')) = 'offline' THEN 1 ELSE 0 END) AS offline")
+                ->first();
+
+            return [
+                'total_readings' => $this->buildReadingsQuery($filters)->count(),
+                'total_devices' => (int) ($devices->total ?? 0),
+                'online_devices' => (int) ($devices->online ?? 0),
+                'offline_devices' => (int) ($devices->offline ?? 0),
+            ];
+        }
+
+        $perDevice = $this->buildReadingsQuery($filters)
+            ->toBase()
+            ->selectRaw('sensor_device_id, COUNT(*) AS total, MAX(id) AS latest_id')
+            ->groupBy('sensor_device_id')
+            ->get();
+
+        // Readings without a device id count as readings, but not as a device.
+        $latestIds = $perDevice
+            ->filter(fn ($row) => rtrim((string) $row->sensor_device_id) !== '')
+            ->pluck('latest_id');
+
+        $online = 0;
+        $offline = 0;
+
+        foreach ($latestIds->chunk(1000) as $ids) {
+            $statuses = Reading::query()->toBase()->whereIn('id', $ids->values()->all())->pluck('status');
+
+            foreach ($statuses as $status) {
+                match (strtolower((string) $status)) {
+                    'online' => $online++,
+                    'offline' => $offline++,
+                    default => null,
+                };
+            }
+        }
+
+        return [
+            'total_readings' => (int) $perDevice->sum('total'),
+            'total_devices' => $latestIds->count(),
+            'online_devices' => $online,
+            'offline_devices' => $offline,
+        ];
     }
 
     public function data(Request $request)
