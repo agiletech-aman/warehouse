@@ -7,23 +7,31 @@ use App\Models\Device;
 use App\Models\Reading;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class ReadingController extends Controller
 {
     public function index()
     {
-        $readingCounts = [
-            'total' => $this->lastMonthReadings()->count(),
-            'normal' => $this->lastMonthReadings()->where(function ($query) {
-                $query->where('level', 'normal')
-                    ->orWhereNull('level')
-                    ->orWhere('level', '');
-            })->count(),
-            'severe' => $this->lastMonthReadings()->where('level', 'severe')->count(),
-            'critical' => $this->lastMonthReadings()->where('level', 'critical')->count(),
-        ];
+        return view('readings.index');
+    }
 
-        return view('readings.index', compact('readingCounts'));
+    // Loaded after the page opens: counting a month of readings is slow on a big table.
+    public function counts()
+    {
+        $counts = Cache::remember('readings.last_month_counts', now()->addMinutes(5), function () {
+            $row = $this->lastMonthReadings()
+                ->toBase()
+                ->selectRaw('COUNT(*) AS total')
+                ->selectRaw("SUM(CASE WHEN level = 'normal' OR level IS NULL OR level = '' THEN 1 ELSE 0 END) AS normal")
+                ->selectRaw("SUM(CASE WHEN level = 'severe' THEN 1 ELSE 0 END) AS severe")
+                ->selectRaw("SUM(CASE WHEN level = 'critical' THEN 1 ELSE 0 END) AS critical")
+                ->first();
+
+            return array_map('intval', (array) $row);
+        });
+
+        return response()->json($counts);
     }
 
     public function data(Request $request)
@@ -40,8 +48,8 @@ class ReadingController extends Controller
         $this->applyDataTableSearch($query, $request);
 
         $readings = $query
+            // recorded_at only: adding id stops the index order being used and sorts the whole month.
             ->latest('recorded_at')
-            ->latest('id')
             ->offset($start)
             ->limit($length + 1)
             ->get([

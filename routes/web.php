@@ -49,6 +49,7 @@ Route::get('/devices/detailed-summary/export', [DeviceController::class, 'detail
 Route::get('/devices/data', [DeviceController::class, 'data'])->name('devices.data');
 Route::resource('devices', DeviceController::class);
 Route::get('/readings/data', [ReadingController::class, 'data'])->name('readings.data');
+Route::get('/readings/counts', [ReadingController::class, 'counts'])->name('readings.counts');
 Route::resource('readings', ReadingController::class);
 Route::get('/alerts/data', [AlertController::class, 'data'])->name('alerts.data');
 Route::resource('alerts', AlertController::class);
