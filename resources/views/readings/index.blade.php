@@ -8,7 +8,7 @@
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div>
                 <h3 class="mb-1">Readings</h3>
-                <p class="text-muted mb-0">Monitor all sensor readings from devices.</p>
+                <p class="text-muted mb-0">Sensor readings from the last 1 month.</p>
             </div>
 
         </div>
@@ -22,7 +22,7 @@
                 <div class="card border-0 shadow-sm p-4 h-100">
                     <div class="text-muted small text-uppercase">Total Readings</div>
                     <div class="display-6 fw-bold mt-2">{{ number_format($readingCounts['total'] ?? 0) }}</div>
-                    <p class="text-muted mb-0">All sensor readings.</p>
+                    <p class="text-muted mb-0">Last 1 month readings.</p>
                 </div>
             </div>
 

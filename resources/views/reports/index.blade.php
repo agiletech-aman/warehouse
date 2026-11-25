@@ -23,21 +23,21 @@
 
                     <a id="export_pdf"
                         href="#"
-                        class="btn btn-outline-danger rounded-pill">
+                        class="btn btn-outline-danger rounded-pill disabled">
                         <i class="bi bi-file-earmark-pdf"></i>
                         PDF
                     </a>
 
                     <a id="export_excel"
                         href="#"
-                        class="btn btn-outline-success rounded-pill">
+                        class="btn btn-outline-success rounded-pill disabled">
                         <i class="bi bi-file-earmark-excel"></i>
                         Excel
                     </a>
 
                     <a id="export_csv"
                         href="#"
-                        class="btn btn-outline-secondary rounded-pill">
+                        class="btn btn-outline-secondary rounded-pill disabled">
                         CSV
                     </a>
 
@@ -260,6 +260,16 @@
                         </div>
 
                         <button
+                            type="submit"
+                            id="btnApply"
+                            class="btn btn-primary rounded-pill"
+                            disabled>
+
+                            Apply Filters
+
+                        </button>
+
+                        <button
                             type="button"
                             id="btnReset"
                             class="btn btn-outline-secondary rounded-pill">
@@ -359,7 +369,7 @@
         <div class="card-body pt-0 d-none" id="chartSection">
 
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                <div class="text-muted small" id="chartMeta">Loading chart...</div>
+                <div class="text-muted small" id="chartMeta">Click "Apply Filters" to load the report.</div>
             </div>
 
             <div class="row g-3" id="gasCharts"></div>
@@ -541,9 +551,22 @@
         return params;
     }
 
+    // Filters of the last "Apply Filters" click; null until then, and nothing loads while null.
+    let appliedFilters = null;
+
+    const APPLY_HINT = 'Click "Apply Filters" to load the report.';
+
     function buildExportLinks() {
 
-        const params = getFilters();
+        ['export_pdf', 'export_excel', 'export_csv'].forEach(id => {
+            const link = document.getElementById(id);
+            link.classList.toggle('disabled', !appliedFilters);
+            if (!appliedFilters) link.href = '#';
+        });
+
+        if (!appliedFilters) return;
+
+        const params = new URLSearchParams(appliedFilters);
 
         if (table) {
             const visibleColumns = table.columns().visible().toArray()
@@ -629,6 +652,21 @@
 
 
     /* ---------------- REGIONS ---------------- */
+
+    // Apply stays disabled while the dropdowns load, so it never sends outdated selections.
+    let pendingLoads = 0;
+
+    async function whileLoading(task) {
+        const btn = document.getElementById('btnApply');
+        pendingLoads++;
+        btn.disabled = true;
+        try {
+            return await task();
+        } finally {
+            pendingLoads--;
+            btn.disabled = pendingLoads > 0;
+        }
+    }
 
     async function loadRegions() {
 
@@ -823,11 +861,21 @@
 
     /* ---------------- SUMMARY ---------------- */
 
+    const STAT_IDS = ['stat_total_readings', 'stat_total_devices', 'stat_online_devices', 'stat_offline_devices'];
+    let summaryRequestId = 0;
+
     async function refreshSummary() {
+
+        const requestId = ++summaryRequestId;
+
+        if (!appliedFilters) {
+            STAT_IDS.forEach(id => { document.getElementById(id).textContent = 0; });
+            return;
+        }
 
         const response = await fetch(
             '{{ url("/admin/reports/summary") }}?' +
-            getFilters()
+            appliedFilters
         );
 
         if (!response.ok) {
@@ -837,7 +885,7 @@
 
         const payload = await response.json();
 
-        if (!payload.success) return;
+        if (requestId !== summaryRequestId || !payload.success) return;
 
         const setStat = (id, value) => {
             const element = document.getElementById(id);
@@ -878,18 +926,29 @@
                 className: 'btn btn-secondary rounded-pill'
             }],
 
-            ajax: {
-                url: '{{ url("/admin/reports/data") }}',
+            language: { emptyTable: APPLY_HINT },
 
-                data: function(d) {
+            ajax: function(d, callback, settings) {
 
-                    const params = getFilters();
+                const empty = { draw: d.draw, recordsTotal: 0, recordsFiltered: 0, data: [] };
 
-                    for (const [k, v] of params.entries()) {
-                        d[k] = v;
-                    }
+                // Also covers search, sort and page-size changes made before Apply.
+                settings.oLanguage.sEmptyTable = appliedFilters ? 'No readings found for the selected filters.' : APPLY_HINT;
 
+                if (!appliedFilters) {
+                    callback(empty);
+                    return;
                 }
+
+                return $.ajax({
+                    url: '{{ url("/admin/reports/data") }}',
+                    dataType: 'json',
+                    data: Object.assign({}, d, Object.fromEntries(appliedFilters)),
+                }).done(callback).fail(xhr => {
+                    if (xhr.statusText === 'abort') return;
+                    settings.oLanguage.sEmptyTable = 'Report could not be loaded (status ' + xhr.status + '). Click "Apply Filters" to try again.';
+                    callback(empty);
+                });
             },
 
             columns: [{
@@ -1162,6 +1221,17 @@
         },
     };
 
+    function clearChart() {
+        if (chartAbort) chartAbort.abort();
+        chartRequestId++;
+        lastChartQuery = null;
+        gasCharts.forEach(c => c.destroy());
+        gasCharts = [];
+        document.getElementById('gasCharts').innerHTML = '';
+        document.getElementById('chartEmpty').classList.add('d-none');
+        document.getElementById('chartMeta').textContent = APPLY_HINT;
+    }
+
     async function refreshChart() {
 
         if (typeof Chart === 'undefined') {
@@ -1169,7 +1239,12 @@
             return;
         }
 
-        const query = getFilters().toString();
+        if (!appliedFilters) {
+            clearChart();
+            return;
+        }
+
+        const query = appliedFilters.toString();
 
         // Same filters as the chart already on screen: nothing to load.
         if (query === lastChartQuery) return;
@@ -1205,7 +1280,7 @@
 
         document.getElementById('chartMeta').textContent =
             `${longDate(payload.from_date)} to ${longDate(payload.to_date)} · ${bucketName} · ${payload.time_of_day}` +
-            (document.getElementById('from_date').value || document.getElementById('to_date').value ? '' : ' (no date range selected: showing last 7 days)');
+            (/(^|&)(from|to)_date=/.test(query) ? '' : ' (no date range selected: showing last 7 days)');
 
         const bucketKeys = payload.labels;
         const tickTexts = buildTickTexts(bucketKeys, payload.bucket);
@@ -1387,11 +1462,14 @@
 
     /* ---------------- REFRESH ---------------- */
 
-    function reloadTable() {
+    function reloadReport() {
 
         buildExportLinks();
 
         refreshSummary();
+
+        // Always reload on Apply, even when the filters did not change.
+        lastChartQuery = null;
 
         // Only load the view that is on screen; the hidden table reloads when it is opened again.
         if (isChartView()) {
@@ -1403,54 +1481,30 @@
     }
 
 
-    /* ---------------- DEBOUNCE ---------------- */
-
-    function debounce(func, delay) {
-
-        let timer;
-
-        return function() {
-
-            clearTimeout(timer);
-
-            timer = setTimeout(
-                () => func(),
-                delay
-            );
-        };
-    }
-
-    const autoRefresh =
-        debounce(reloadTable, 500);
-
-
     /* ---------------- EVENTS ---------------- */
 
-    function setupFilters() {
+    function setupApplyButton() {
 
-        document
-            .querySelectorAll(
-                '#filtersForm input:not(.dd-check),#filtersForm select'
-            )
-            .forEach(el => {
+        document.getElementById('filtersForm').addEventListener('submit', e => {
 
-                el.addEventListener(
-                    'change',
-                    autoRefresh
-                );
+            e.preventDefault();
 
-            });
+            if (pendingLoads > 0) return;
+
+            appliedFilters = getFilters();
+            reloadReport();
+        });
     }
 
 
     function setupDropdowns() {
 
         setupCheckboxDropdown('regionCheckboxList', 'region_code', 'regionDropdownBtn', 'All Regions', () => {
-            loadWarehouses(document.getElementById('region_code').value);
+            whileLoading(() => loadWarehouses(document.getElementById('region_code').value));
         });
 
         setupCheckboxDropdown('warehouseCheckboxList', 'warehouse_code', 'warehouseDropdownBtn', 'All Warehouses', () => {
-            loadLocations();
+            whileLoading(loadLocations);
         });
 
         setupLocationDropdown();
@@ -1476,9 +1530,12 @@
                 ['region_code', 'level', 'locations'].forEach(id => { document.getElementById(id).value = ''; });
                 document.getElementById('levelDropdownBtn').textContent = 'All Levels';
 
-                await loadWarehouses('');
+                // Back to the empty state; the report loads again on Apply.
+                appliedFilters = null;
+                clearChart();
+                reloadReport();
 
-                autoRefresh();
+                await whileLoading(() => loadWarehouses(''));
 
             });
 
@@ -1491,16 +1548,16 @@
         'DOMContentLoaded',
         async function() {
 
-            await loadRegions();
-            await loadWarehouses('');
-
             initTable();
-
-            refreshSummary();
 
             buildExportLinks();
 
-            setupFilters();
+            setupApplyButton();
+
+            await whileLoading(async () => {
+                await loadRegions();
+                await loadWarehouses('');
+            });
 
             setupDropdowns();
 

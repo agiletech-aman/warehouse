@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Alert;
 use App\Models\Device;
 use App\Models\Reading;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
 class ReadingController extends Controller
@@ -12,14 +13,14 @@ class ReadingController extends Controller
     public function index()
     {
         $readingCounts = [
-            'total' => Reading::count(),
-            'normal' => Reading::where(function ($query) {
+            'total' => $this->lastMonthReadings()->count(),
+            'normal' => $this->lastMonthReadings()->where(function ($query) {
                 $query->where('level', 'normal')
                     ->orWhereNull('level')
                     ->orWhere('level', '');
             })->count(),
-            'severe' => Reading::where('level', 'severe')->count(),
-            'critical' => Reading::where('level', 'critical')->count(),
+            'severe' => $this->lastMonthReadings()->where('level', 'severe')->count(),
+            'critical' => $this->lastMonthReadings()->where('level', 'critical')->count(),
         ];
 
         return view('readings.index', compact('readingCounts'));
@@ -35,10 +36,10 @@ class ReadingController extends Controller
             $length = 10;
         }
 
-        $query = Reading::query();
+        $query = $this->lastMonthReadings();
         $this->applyDataTableSearch($query, $request);
 
-        $recordsTotal = Reading::query()->count();
+        $recordsTotal = $this->lastMonthReadings()->count();
         $recordsFiltered = (clone $query)->count();
 
         $readings = $query
@@ -136,6 +137,12 @@ class ReadingController extends Controller
         $reading->delete();
 
         return redirect()->route('readings.index')->with('success', 'Reading deleted successfully.');
+    }
+
+    // The readings list only shows the last month; older rows stay in the database.
+    private function lastMonthReadings(): Builder
+    {
+        return Reading::query()->where('recorded_at', '>=', now()->subMonthNoOverflow());
     }
 
     private function applyDataTableSearch($query, Request $request): void
