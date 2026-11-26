@@ -81,10 +81,11 @@
   <form method="post" action="{{ route('wsm.update', $w->workstation_id) }}">
     @csrf<input type="hidden" name="action" value="save">
     <div class="grid g2">
-      <label class="f"><span>Name / label</span><input type="text" name="label" value="{{ old('label', $w->label) }}" placeholder="e.g. Gate 2 control room">
-        @error('label')<div class="err-inline">{{ $message }}</div>@enderror</label>
       <label class="f"><span>Warehouse code</span><input type="text" name="warehouse_code" value="{{ old('warehouse_code', $w->warehouse_code) }}">
-        @error('warehouse_code')<div class="err-inline">{{ $message }}</div>@enderror</label>
+        @error('warehouse_code')<div class="err-inline">{{ $message }}</div>@enderror
+        <div class="muted" style="font-size:13px;margin-top:4px">
+          Name: <b>{{ $w->label ?: 'not found in warehouses list' }}</b> — taken automatically from the warehouses table.
+        </div></label>
       <label class="f"><span>Version to run</span>
         <select name="target_release_id">
           <option value="">Always latest (recommended)</option>

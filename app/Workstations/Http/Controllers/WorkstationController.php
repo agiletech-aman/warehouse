@@ -54,12 +54,12 @@ class WorkstationController extends Controller
                 break;
             case 'save':
                 $d = $r->validate([
-                    'label' => 'nullable|string|max:120',
                     'warehouse_code' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_.-]*$/'],
                     'target_release_id' => 'nullable|integer|exists:wsm_releases,id',
                 ]);
-                $w->update(['label' => $d['label'] ?? null, 'warehouse_code' => trim((string)($d['warehouse_code'] ?? '')) ?: null,
+                $w->update(['warehouse_code' => trim((string)($d['warehouse_code'] ?? '')) ?: null,
                     'auto_update' => $r->boolean('auto_update'), 'target_release_id' => $d['target_release_id'] ?? null]);
+                $w->syncLabel();
                 break;
             case 'command':
                 $cmd = (string)$r->input('command');

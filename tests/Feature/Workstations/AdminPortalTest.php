@@ -76,15 +76,37 @@ class AdminPortalTest extends WorkstationTestCase
     {
         $this->approvedWithToken('ws-1');
         $r = $this->release('1.0.0');
-        $this->admin()->post('/workstations/ws/ws-1', ['action' => 'save', 'label' => 'Gate', 'warehouse_code' => 'WH2',
+        $this->admin()->post('/workstations/ws/ws-1', ['action' => 'save', 'label' => 'ignored', 'warehouse_code' => 'WH2',
             'target_release_id' => $r->id])->assertSessionHas('ok');
         $w = Workstation::first();
-        $this->assertSame(['Gate', 'WH2', $r->id, false], [$w->label, $w->warehouse_code, (int)$w->target_release_id, $w->auto_update]);
+        $this->assertSame([null, 'WH2', $r->id, false], [$w->label, $w->warehouse_code, (int)$w->target_release_id, $w->auto_update]);
 
         $this->admin()->post('/workstations/ws/ws-1', ['action' => 'reset_token']);
         $this->assertNull(Workstation::first()->token_hash);
         $this->admin()->post('/workstations/ws/ws-1', ['action' => 'block']);
         $this->assertSame('blocked', Workstation::first()->status);
+    }
+
+    public function test_name_comes_from_warehouses_table(): void
+    {
+        $region = \App\Models\Region::factory()->create();
+        foreach (['WH1' => 'Delhi Central', 'WH2' => 'Pune East'] as $code => $name) {
+            \App\Models\Warehouse::create(['region_id' => $region->id, 'warehouse_code' => $code, 'warehouse_name' => $name,
+                'manager_name' => 'M', 'manager_email' => "$code@example.com", 'manager_phone' => '1', 'address' => 'A',
+                'city' => 'C', 'state' => 'S', 'country' => 'IN']);
+        }
+        // check-in reporting WH1 fills the name automatically
+        $this->postJson('/api/agent/checkin', ['workstation_id' => 'ws-n1', 'warehouse_code' => 'WH1'], ['X-API-Key' => 'boot-secret'])->assertOk();
+        $this->assertSame('Delhi Central', Workstation::where('workstation_id', 'ws-n1')->value('label'));
+
+        // admin changes the code -> name follows
+        $this->admin()->post('/workstations/ws/ws-n1', ['action' => 'save', 'warehouse_code' => 'WH2'])->assertSessionHas('ok');
+        $this->assertSame('Pune East', Workstation::where('workstation_id', 'ws-n1')->value('label'));
+
+        // unknown code -> no name
+        $this->admin()->post('/workstations/ws/ws-n1', ['action' => 'save', 'warehouse_code' => 'NOPE'])->assertSessionHas('ok');
+        $this->assertNull(Workstation::where('workstation_id', 'ws-n1')->value('label'));
+        $this->admin()->get('/workstations/ws/ws-n1')->assertOk()->assertDontSee('name="label"', false);
     }
 
     public function test_install_wizard_creates_hashed_expiring_token(): void

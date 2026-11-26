@@ -74,7 +74,7 @@ class AgentController extends Controller
         DB::transaction(function () use ($res, $wid, $enroll) {
             $attrs = $res['ws'];
             unset($attrs['id']);
-            Workstation::updateOrCreate(['workstation_id' => $wid], $attrs);
+            Workstation::updateOrCreate(['workstation_id' => $wid], $attrs)->syncLabel();
             if ($res['created'] && $enroll['token']) {
                 $enroll['token']->increment('uses');
             }
