@@ -56,7 +56,8 @@ Route::get('/master-alert-summary/cwc-dashboard', [MasterAlertController::class,
 Route::get('/master-alerts/devices', [MasterAlertController::class, 'devicesApi']);
 Route::get('/master-alerts/devices/{warehouseNmsId}', [MasterAlertController::class, 'devicesApi']);
 Route::get('/master-alerts/states', [MasterAlertController::class, 'statesApi']);
-Route::get('/master-alerts/states/{state}/locations', [MasterWarehouseController::class, 'locationsByState']);
+Route::get('/master-alerts/states/{state}/l
+ocations', [MasterWarehouseController::class, 'locationsByState']);
 Route::get('/master-alerts/export', [MasterAlertController::class, 'exportExcel']);
 Route::get('/master-alerts/regions/{regionId}/warehouses', [MasterWarehouseController::class, 'warehousesByRegion']);
 Route::get('/master-alerts/warehouses/{warehouseId}/cities', [MasterWarehouseController::class, 'citiesByWarehouse']);

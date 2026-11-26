@@ -1,9 +1,9 @@
 <?php
 
-use App\Fleet\FleetServiceProvider;
 use App\Providers\AppServiceProvider;
+use App\Workstations\WorkstationsServiceProvider;
 
 return [
     AppServiceProvider::class,
-    FleetServiceProvider::class,
+    WorkstationsServiceProvider::class,
 ];
