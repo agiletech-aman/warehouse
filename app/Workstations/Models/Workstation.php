@@ -25,11 +25,14 @@ class Workstation extends Model
         }
     }
 
-    /** Label always mirrors the warehouse name of the current warehouse code. */
+    /**
+     * If the warehouse code exists in the warehouses table, the label always mirrors its name.
+     * Otherwise the label is whatever the admin typed (kept as is).
+     */
     public function syncLabel(): void
     {
         $name = self::warehouseName($this->warehouse_code);
-        if ($this->label !== $name) {
+        if ($name !== null && $this->label !== $name) {
             $this->forceFill(['label' => $name])->save();
         }
     }

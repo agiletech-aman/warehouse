@@ -80,21 +80,39 @@
   <h2>Details &amp; updates</h2>
   <form method="post" action="{{ route('wsm.update', $w->workstation_id) }}">
     @csrf<input type="hidden" name="action" value="save">
+
     <div class="grid g2">
-      <label class="f"><span>Warehouse code</span><input type="text" name="warehouse_code" value="{{ old('warehouse_code', $w->warehouse_code) }}">
-        @error('warehouse_code')<div class="err-inline">{{ $message }}</div>@enderror
-        <div class="muted" style="font-size:13px;margin-top:4px">
-          Name: <b>{{ $w->label ?: 'not found in warehouses list' }}</b> — taken automatically from the warehouses table.
-        </div></label>
+      <label class="f"><span>Warehouse code</span>
+        <input type="text" name="warehouse_code" value="{{ old('warehouse_code', $w->warehouse_code) }}" placeholder="e.g. DE001">
+        @error('warehouse_code')<div class="err-inline">{{ $message }}</div>@enderror</label>
+
+      @if($whName)
+        <label class="f"><span>Name <span class="tag green" style="margin-left:4px">From warehouses list</span></span>
+          <input type="text" value="{{ $whName }}" disabled></label>
+      @else
+        <label class="f"><span>Name <span class="tag" style="margin-left:4px">Not in warehouses list</span></span>
+          <input type="text" name="label" value="{{ old('label', $w->label) }}" placeholder="Type a name for this workstation">
+          <div class="muted" style="font-size:13px;margin-top:4px">
+            {{ $w->warehouse_code ? "Code {$w->warehouse_code} was not found in the warehouses table" : 'No warehouse code set' }}, so you can type a name here.
+          </div>
+          @error('label')<div class="err-inline">{{ $message }}</div>@enderror</label>
+      @endif
+    </div>
+
+    <div class="grid g2">
       <label class="f"><span>Version to run</span>
         <select name="target_release_id">
           <option value="">Always latest (recommended)</option>
           @foreach($releases as $r)<option value="{{ $r->id }}" @selected($w->target_release_id == $r->id)>📌 Pin v{{ $r->version }}{{ $r->is_latest ? ' (latest)' : '' }}</option>@endforeach
         </select></label>
-      <label class="f" style="display:flex;gap:10px;align-items:center;margin-top:22px">
-        <input type="checkbox" name="auto_update" value="1" @checked($w->auto_update) style="width:18px;height:18px">
-        <span style="margin:0;color:var(--ink)">Auto-update on — install new versions automatically</span></label>
+
+      <label class="f"><span>Auto-update</span>
+        <span class="row" style="gap:10px;min-height:40px;margin:0;color:var(--ink)">
+          <input type="checkbox" name="auto_update" value="1" @checked($w->auto_update) style="width:18px;height:18px">
+          Install new versions automatically
+        </span></label>
     </div>
+
     <button class="btn primary">Save</button>
   </form>
 </div>

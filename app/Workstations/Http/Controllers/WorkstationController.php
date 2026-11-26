@@ -26,7 +26,7 @@ class WorkstationController extends Controller
                 'tone' => ['failed' => 'bad', 'done' => 'good'][$c->status] ?? 'info', 'kind' => 'command']);
 
         return view('workstations::workstation', [
-            'w' => $w, 'env' => $own, 'eff' => $eff, 'inSync' => AgentProtocol::envInSync($w->env_applied_hash, $eff),
+            'w' => $w, 'whName' => Workstation::warehouseName($w->warehouse_code), 'env' => $own, 'eff' => $eff, 'inSync' => AgentProtocol::envInSync($w->env_applied_hash, $eff),
             'releases' => Release::where('yanked', false)->orderByDesc('id')->get(),
             'timeline' => $events->concat($commands)->sortByDesc('at')->values(),
             'cmds' => AgentProtocol::ALLOWED_COMMANDS,
@@ -55,11 +55,14 @@ class WorkstationController extends Controller
             case 'save':
                 $d = $r->validate([
                     'warehouse_code' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_.-]*$/'],
+                    'label' => 'nullable|string|max:120',
                     'target_release_id' => 'nullable|integer|exists:wsm_releases,id',
                 ]);
-                $w->update(['warehouse_code' => trim((string)($d['warehouse_code'] ?? '')) ?: null,
+                $code = trim((string)($d['warehouse_code'] ?? '')) ?: null;
+                // Name from the warehouses table wins; a typed name is used only when the code is not found there.
+                $label = Workstation::warehouseName($code) ?? (trim((string)($d['label'] ?? '')) ?: null);
+                $w->update(['warehouse_code' => $code, 'label' => $label,
                     'auto_update' => $r->boolean('auto_update'), 'target_release_id' => $d['target_release_id'] ?? null]);
-                $w->syncLabel();
                 break;
             case 'command':
                 $cmd = (string)$r->input('command');
