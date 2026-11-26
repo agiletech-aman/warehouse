@@ -37,20 +37,20 @@ class WorkstationController extends Controller
     {
         $w = Workstation::where('workstation_id', $wid)->firstOrFail();
         $act = (string)$r->input('action');
-        $msg = 'Save ho gaya.';
+        $msg = 'Saved.';
 
         switch ($act) {
             case 'approve':
                 $w->update(['status' => 'approved']);
-                $msg = 'Workstation approve ho gaya. Agle check-in par isse token mil jayega.';
+                $msg = 'Workstation approved. It will receive its token on the next check-in.';
                 break;
             case 'block':
                 $w->update(['status' => 'blocked']);
-                $msg = 'Workstation block ho gaya. Ab ye server se baat nahi kar payega.';
+                $msg = 'Workstation blocked. It can no longer talk to the server.';
                 break;
             case 'reset_token':
                 $w->update(['token_hash' => null]);
-                $msg = 'Token reset ho gaya. Workstation ko naya token tabhi milega jab wo valid install key ke saath check-in kare (zarurat ho to Add Workstation se naya command chalayein).';
+                $msg = 'Token reset. The workstation gets a new token only after it checks in with a valid install key (run a new command from Add Workstation if needed).';
                 break;
             case 'save':
                 $d = $r->validate([
@@ -64,21 +64,21 @@ class WorkstationController extends Controller
             case 'command':
                 $cmd = (string)$r->input('command');
                 if (!in_array($cmd, AgentProtocol::ALLOWED_COMMANDS, true)) {
-                    return back()->with('error', 'Ye command allowed nahi hai.');
+                    return back()->with('error', 'This command is not allowed.');
                 }
                 if ($w->status !== 'approved') {
-                    return back()->with('error', 'Pehle workstation approve karein, phir command bhejein.');
+                    return back()->with('error', 'Approve the workstation before sending commands.');
                 }
                 Command::create(['workstation_id' => $wid, 'command' => $cmd]);
-                $msg = Timeline::commandName($cmd) . ' command queue ho gaya — agle check-in par chalega.';
+                $msg = Timeline::commandName($cmd) . ' command queued — it will run on the next check-in.';
                 break;
             case 'delete':
                 Command::where('workstation_id', $wid)->delete();
                 EnvEntry::where('scope', 'workstation')->where('scope_ref', $wid)->delete();
                 $w->delete();
-                return redirect()->route('wsm.index')->with('ok', "$wid hata diya gaya.");
+                return redirect()->route('wsm.index')->with('ok', "$wid removed.");
             default:
-                return back()->with('error', 'Anjaan action.');
+                return back()->with('error', 'Unknown action.');
         }
         Event::create(['workstation_id' => $wid, 'type' => 'admin_' . $act,
             'message' => $act === 'command' ? (string)$r->input('command') : null, 'created_at' => now()]);

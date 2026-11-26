@@ -117,18 +117,18 @@ class AgentController extends Controller
         $key = $this->enrollKey($r);
         $enroll = $this->enrollment($key);
         if (!$enroll['ok']) {
-            return response("echo 'Install link galat hai ya expire ho gaya. Admin se naya command lein.' >&2; exit 1\n", 401,
+            return response("echo 'Install link is invalid or expired. Ask the admin for a new command.' >&2; exit 1\n", 401,
                 ['Content-Type' => 'text/x-shellscript']);
         }
         $code = preg_replace('/[^A-Za-z0-9_.-]/', '', $code);
         if ($enroll['token'] && $enroll['token']->warehouse_code !== $code) {
-            return response("echo 'Ye install command dusre warehouse ka hai.' >&2; exit 1\n", 403,
+            return response("echo 'This install command belongs to a different warehouse.' >&2; exit 1\n", 403,
                 ['Content-Type' => 'text/x-shellscript']);
         }
         $pk = (string)config('workstations.public_key');
         $rel = Release::where('is_latest', true)->where('yanked', false)->first();
         if (!$rel || !AgentProtocol::verifySignature($pk, $rel->version, $rel->sha256, $rel->signature)) {
-            return response("echo 'Abhi koi signed release publish nahi hua hai.' >&2; exit 1\n", 409,
+            return response("echo 'No signed release has been published yet.' >&2; exit 1\n", 409,
                 ['Content-Type' => 'text/x-shellscript']);
         }
 

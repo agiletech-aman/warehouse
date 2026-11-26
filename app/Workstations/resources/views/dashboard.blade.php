@@ -10,7 +10,7 @@
     <h1>Workstations</h1>
     <p class="sub" style="margin:0">
       Latest release:
-      @if($latest)<b>v{{ $latest->version }}</b>@else<span class="muted">koi nahi</span> — <a href="{{ route('wsm.releases') }}">release upload karein</a>@endif
+      @if($latest)<b>v{{ $latest->version }}</b>@else<span class="muted">none</span> — <a href="{{ route('wsm.releases') }}">upload a release</a>@endif
     </p>
   </div>
   <div class="spacer"></div>
@@ -19,10 +19,10 @@
 
 @if($pending->count())
   <div class="banner">
-    <span>⏳ <b>{{ $pending->count() }} naye workstation</b> approval ka intezaar kar rahe hain:
+    <span>⏳ <b>{{ $pending->count() }} new workstation(s)</b> waiting for approval:
       <span class="muted">{{ $pending->take(4)->pluck('workstation_id')->join(', ') }}{{ $pending->count() > 4 ? ' …' : '' }}</span></span>
     <div class="spacer"></div>
-    <form method="post" action="{{ route('wsm.approve-all') }}" data-confirm="Saare {{ $pending->count() }} pending workstations approve karein? Approve hone ke baad unhe updates aur settings milne lagengi.">
+    <form method="post" action="{{ route('wsm.approve-all') }}" data-confirm="Approve all {{ $pending->count() }} pending workstations? Once approved they will start receiving updates and settings.">
       @csrf<button class="btn good">✓ Approve all</button>
     </form>
   </div>
@@ -39,7 +39,7 @@
   <form class="row" method="get" style="margin-bottom:14px">
     <input type="search" name="q" value="{{ $q }}" placeholder="Search: ID, label, hostname, version…" style="flex:1;min-width:200px">
     <select name="wh" onchange="this.form.submit()">
-      <option value="">Saare warehouses</option>
+      <option value="">All warehouses</option>
       @foreach($warehouses as $c)<option value="{{ $c }}" @selected($wh === $c)>{{ $c }}</option>@endforeach
     </select>
     <button class="btn">Search</button>
@@ -49,12 +49,12 @@
   @if($rows->isEmpty())
     <div class="empty">
       @if($stats['total'] === 0)
-        <b>Abhi koi workstation nahi juda hai</b>
-        Shuru karne ke liye: 1) <a href="{{ route('wsm.releases') }}">ek signed release upload karein</a>,
-        2) <a href="{{ route('wsm.add') }}">Add Workstation</a> se install command lekar machine par chalayein.
+        <b>No workstations connected yet</b>
+        To get started: 1) <a href="{{ route('wsm.releases') }}">upload a signed release</a>,
+        2) get an install command from <a href="{{ route('wsm.add') }}">Add Workstation</a> and run it on the machine.
       @else
-        <b>Is search se koi workstation nahi mila</b>
-        Filter hata kar dobara dekhein.
+        <b>No workstations match this search</b>
+        Clear the filters and try again.
       @endif
     </div>
   @else
@@ -72,8 +72,8 @@
               @if($w->vstate === 'outdated') <span class="tag">Outdated</span>@endif
               @if($w->vstate === 'frozen') <span class="tag grey">Auto-update off</span>@endif
               @if($w->target_version) <span class="tag grey" title="Pinned">📌 v{{ $w->target_version }}</span>@endif</td>
-            <td>{{ $w->devices_online }}/{{ $w->devices_total }} @if($w->alerts)<span class="tag red">{{ $w->alerts }} alert</span>@endif</td>
-            <td class="muted" title="{{ $w->last_seen_at }}">{{ Timeline::pehle($w->last_seen_at) }}</td>
+            <td>{{ $w->devices_online }}/{{ $w->devices_total }} @if($w->alerts)<span class="tag red">{{ $w->alerts }} alert(s)</span>@endif</td>
+            <td class="muted" title="{{ $w->last_seen_at }}">{{ Timeline::ago($w->last_seen_at) }}</td>
           </tr>
         @endforeach
         </tbody>
@@ -84,7 +84,7 @@
         <a class="wcard" href="{{ route('wsm.show', $w->workstation_id) }}">
           <div class="row"><b>{{ $w->label ?: $w->workstation_id }}</b><div class="spacer"></div><span class="badge b-{{ $w->badge }}">{{ $badgeText[$w->badge] }}</span></div>
           <div class="muted" style="margin-top:6px">{{ $w->warehouse_code ?: 'No warehouse' }} · <span class="mono">{{ $w->current_version ? 'v'.$w->current_version : '—' }}</span>
-            @if($w->vstate === 'outdated') <span class="tag">Outdated</span>@endif · {{ Timeline::pehle($w->last_seen_at) }}</div>
+            @if($w->vstate === 'outdated') <span class="tag">Outdated</span>@endif · {{ Timeline::ago($w->last_seen_at) }}</div>
         </a>
       @endforeach
     </div>

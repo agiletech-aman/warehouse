@@ -45,7 +45,7 @@ class AdminPortalTest extends WorkstationTestCase
 
     public function test_empty_dashboard_explains_next_steps(): void
     {
-        $this->admin()->get('/workstations')->assertOk()->assertSee('Abhi koi workstation nahi juda hai');
+        $this->admin()->get('/workstations')->assertOk()->assertSee('No workstations connected yet');
     }
 
     public function test_approve_all(): void

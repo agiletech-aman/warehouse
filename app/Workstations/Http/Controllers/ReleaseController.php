@@ -25,33 +25,34 @@ class ReleaseController extends Controller
         $r->validate(['binary' => 'required|file', 'version' => 'required|string|max:32',
             'signature' => 'required|string|max:128', 'type' => 'required|in:binary,package',
             'post_update' => 'nullable|string|max:64', 'notes' => 'nullable|string|max:2000'],
-            ['binary.required' => 'File chunein.', 'signature.required' => 'Signature zaroori hai.']);
+            ['binary.required' => 'Choose a file.', 'signature.required' => 'Signature is required.']);
         try {
             $rel = ReleasePublisher::publish($r->input('version'), $r->file('binary')->getRealPath(), $r->input('signature'),
                 $r->input('type'), $r->input('post_update'), $r->input('notes'), $r->boolean('make_latest'));
         } catch (InvalidArgumentException $e) {
             return back()->withErrors(['binary' => $e->getMessage()])->withInput();
         }
-        return redirect()->route('wsm.releases')->with('ok', "v{$rel->version} upload ho gaya" .
-            ($rel->is_latest ? ' aur latest set ho gaya. Auto-update wale workstations ise install kar lenge.' : '.'));
+        return redirect()->route('wsm.releases')->with('ok', "v{$rel->version} uploaded" .
+            ($rel->is_latest ? ' and set as latest. Workstations with auto-update on will install it.' : '.'));
     }
 
     public function action(Request $r, Release $release)
     {
         switch ($r->input('action')) {
             case 'latest':
-                if (!AgentProtocol::verifySignature((string)config('workstations.public_key'), $release->version, $release->sha256, $release->signature)) {
-                    return back()->with('error', 'Is release ka signature current key se match nahi karta — latest nahi bana sakte.');
+                try {
+                    ReleasePublisher::makeLatest($release);
+                } catch (InvalidArgumentException $e) {
+                    return back()->with('error', $e->getMessage());
                 }
-                ReleasePublisher::makeLatest($release);
-                return back()->with('ok', "v{$release->version} ab latest hai.");
+                return back()->with('ok', "v{$release->version} is now the latest.");
             case 'yank':
                 ReleasePublisher::yank($release);
-                return back()->with('ok', "v{$release->version} yank ho gaya — ab koi ise install nahi karega.");
+                return back()->with('ok', "v{$release->version} yanked — no workstation will install it.");
             case 'unyank':
                 ReleasePublisher::yank($release, false);
-                return back()->with('ok', "v{$release->version} wapas available hai.");
+                return back()->with('ok', "v{$release->version} is available again.");
         }
-        return back()->with('error', 'Anjaan action.');
+        return back()->with('error', 'Unknown action.');
     }
 }

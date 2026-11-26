@@ -27,20 +27,20 @@ class EnvController extends Controller
         $scope = (string)$r->input('scope');
         $ref = $scope === 'global' ? '' : (string)$r->input('ref', '');
         if (!in_array($scope, ['global', 'warehouse', 'workstation'], true) || ($scope !== 'global' && $ref === '')) {
-            return back()->with('error', 'Pehle warehouse / workstation chunein.');
+            return back()->with('error', 'Choose a warehouse / workstation first.');
         }
         $key = strtoupper(trim((string)$r->input('key')));
         $where = ['scope' => $scope, 'scope_ref' => $ref, 'key' => $key];
 
         if ($r->input('action') === 'delete') {
             EnvEntry::where($where)->delete();
-            return back()->with('ok', "$key hata diya. Workstations agle check-in par update ho jayenge.");
+            return back()->with('ok', "$key removed. Workstations will update on their next check-in.");
         }
         $val = trim((string)$r->input('value'));
         if ($err = AgentProtocol::validateEnvEntry($key, $val)) {
             return back()->withErrors(['value' => $err, 'row' => $r->input('row', 'new')])->withInput();
         }
         EnvEntry::updateOrCreate($where, ['value' => $val]);
-        return back()->with('ok', "$key = $val save ho gaya. Workstations agle check-in par ise le lenge.");
+        return back()->with('ok', "$key = $val saved. Workstations will pick it up on their next check-in.");
     }
 }

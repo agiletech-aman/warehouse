@@ -60,6 +60,6 @@ class DashboardController extends Controller
         foreach ($ids as $id) {
             Event::create(['workstation_id' => $id, 'type' => 'admin_approve', 'message' => 'bulk', 'created_at' => now()]);
         }
-        return back()->with('ok', $ids->count() . ' workstation approve ho gaye.');
+        return back()->with('ok', $ids->count() . ' workstation(s) approved.');
     }
 }

@@ -44,7 +44,7 @@ class InstallController extends Controller
         $d = $r->validate([
             'warehouse_code' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_.-]+$/'],
             'uses' => 'nullable|integer|min:1|max:50',
-        ], ['warehouse_code.required' => 'Warehouse chunein.', 'warehouse_code.regex' => 'Warehouse code mein sirf A-Z, 0-9, - _ . allowed hain.']);
+        ], ['warehouse_code.required' => 'Choose a warehouse.', 'warehouse_code.regex' => 'Warehouse code may only contain A-Z, 0-9, - _ .']);
 
         $plain = AgentProtocol::newToken('wsi_');
         $ttl = (int)config('workstations.install_token_ttl');
@@ -58,7 +58,7 @@ class InstallController extends Controller
         return redirect()->route('wsm.add')->with([
             'install_command' => $cmd, 'install_code' => $d['warehouse_code'],
             'install_expires' => now()->addMinutes($ttl)->format('d M Y, h:i A'), 'install_uses' => (int)($d['uses'] ?? 1),
-            'ok' => 'Install command taiyaar hai. Ise abhi copy kar lein — ye dobara nahi dikhega.',
+            'ok' => 'Install command is ready. Copy it now — it will not be shown again.',
         ]);
     }
 }

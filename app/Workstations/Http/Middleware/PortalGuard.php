@@ -13,7 +13,7 @@ class PortalGuard
     {
         $allowed = (array)config('workstations.allowed_ips');
         if ($allowed && !IpUtils::checkIp((string)$r->ip(), $allowed)) {
-            abort(403, 'Is IP se Workstation Manager allowed nahi hai.');
+            abort(403, 'Workstation Manager is not available from this IP address.');
         }
         if (config('workstations.require_https') && !$r->secure()) {
             return redirect()->secure($r->getRequestUri(), 301);

@@ -22,7 +22,7 @@ class AuthController extends Controller
             && hash_equals((string)config('workstations.admin_user'), (string)$r->input('username'))
             && hash_equals($pass, (string)$r->input('password'));
         if (!$ok) {
-            return back()->withInput($r->only('username'))->withErrors(['login' => 'Username ya password galat hai.']);
+            return back()->withInput($r->only('username'))->withErrors(['login' => 'Incorrect username or password.']);
         }
         $r->session()->regenerate();
         $r->session()->put('wsm_admin', true);
@@ -33,6 +33,6 @@ class AuthController extends Controller
     {
         $r->session()->forget('wsm_admin');
         $r->session()->regenerateToken();
-        return redirect()->route('wsm.login')->with('ok', 'Aap logout ho gaye.');
+        return redirect()->route('wsm.login')->with('ok', 'You have been logged out.');
     }
 }

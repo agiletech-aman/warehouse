@@ -16,39 +16,39 @@ class ReleasePublisher
                                    ?string $postUpdate = null, ?string $notes = null, bool $latest = false): Release
     {
         if (!preg_match('/^\d+\.\d+\.\d+(-[A-Za-z0-9.]+)?$/', $version)) {
-            throw new InvalidArgumentException('Version 1.2.3 jaisa hona chahiye.');
+            throw new InvalidArgumentException('Version must look like 1.2.3.');
         }
         if (Release::where('version', $version)->exists()) {
-            throw new InvalidArgumentException("Version $version pehle se maujood hai.");
+            throw new InvalidArgumentException("Version $version already exists.");
         }
         if (!in_array($type, AgentProtocol::RELEASE_TYPES, true)) {
-            throw new InvalidArgumentException('Type "binary" ya "package" hona chahiye.');
+            throw new InvalidArgumentException('Type must be "binary" or "package".');
         }
         if ($postUpdate !== null && $postUpdate !== '') {
             if ($type !== 'package') {
-                throw new InvalidArgumentException('Post-update action sirf package release ke liye hai.');
+                throw new InvalidArgumentException('Post-update actions are only for package releases.');
             }
             if (!array_key_exists($postUpdate, (array)config('workstations.post_update_actions'))) {
-                throw new InvalidArgumentException('Ye post-update action allowed list mein nahi hai.');
+                throw new InvalidArgumentException('This post-update action is not in the allowed list.');
             }
         } else {
             $postUpdate = null;
         }
         if (!is_file($file)) {
-            throw new InvalidArgumentException('File nahi mili.');
+            throw new InvalidArgumentException('File not found.');
         }
         if ($type === 'package' && !self::looksLikeGzip($file)) {
-            throw new InvalidArgumentException('Package release .tar.gz file honi chahiye.');
+            throw new InvalidArgumentException('A package release must be a .tar.gz file.');
         }
 
         $pk = (string)config('workstations.public_key');
         if (!AgentProtocol::validPublicKey($pk)) {
-            throw new InvalidArgumentException('WSM_PUBLIC_KEY set nahi hai (ya galat hai). Bina signing key ke release upload nahi ho sakta.');
+            throw new InvalidArgumentException('WSM_PUBLIC_KEY is not set (or is invalid). Releases cannot be uploaded without a signing key.');
         }
         $sha = hash_file('sha256', $file);
         $signature = trim((string)$signature);
         if (!AgentProtocol::verifySignature($pk, $version, $sha, $signature)) {
-            throw new InvalidArgumentException('Signature match nahi hua. Isi file aur isi version ke liye dobara sign karein.');
+            throw new InvalidArgumentException('Signature does not match. Sign this exact file and version again.');
         }
 
         $path = 'workstations/releases/' . $version . '-' . substr($sha, 0, 12) . ($type === 'package' ? '.tar.gz' : '');
@@ -69,7 +69,7 @@ class ReleasePublisher
     public static function makeLatest(Release $rel): void
     {
         if (!AgentProtocol::verifySignature((string)config('workstations.public_key'), $rel->version, $rel->sha256, $rel->signature)) {
-            throw new InvalidArgumentException("v{$rel->version} ka signature current WSM_PUBLIC_KEY se match nahi karta — latest nahi bana sakte.");
+            throw new InvalidArgumentException("v{$rel->version} signature does not match the current WSM_PUBLIC_KEY — cannot set as latest.");
         }
         Release::where('id', '!=', $rel->id)->update(['is_latest' => false]);
         $rel->update(['is_latest' => true, 'yanked' => false]);

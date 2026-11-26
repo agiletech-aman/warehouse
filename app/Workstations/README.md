@@ -1,7 +1,7 @@
 # Workstation Manager
 
-Warehouses ke Linux workstations par chalne wali `gasmonitor` binary (CO2/PH3 monitoring) ko ek jagah se
-**install, update, configure aur control** karne ka module.
+A module to **install, update, configure and control**, from one place, the `gasmonitor` binary
+(CO2/PH3 monitoring) running on warehouse Linux workstations.
 
 - Admin portal: `https://<server>/workstations`
 - Agent API: `/api/agent/bootstrap/{warehouse_code}`, `/api/agent/checkin`, `/api/agent/releases/{id}/download`
@@ -16,62 +16,62 @@ Warehouses ke Linux workstations par chalne wali `gasmonitor` binary (CO2/PH3 mo
 ```dotenv
 # Admin portal login
 WSM_ADMIN_USER=admin
-WSM_ADMIN_PASS=<lamba-random-password>
+WSM_ADMIN_PASS=<long-random-password>
 
-# Ed25519 public key (base64). Iske bina release upload NAHI hoga.
-WSM_PUBLIC_KEY=<step 1.2 se>
+# Ed25519 public key (base64). Releases CANNOT be uploaded without it.
+WSM_PUBLIC_KEY=<from step 1.2>
 
-# Optional: shared enrollment key (sirf header mein bheji jaati hai).
-# Khaali chhod dein to sirf "Add Workstation" wizard ke ek-baar ke tokens chalenge (recommended).
+# Optional: shared enrollment key (only ever sent in a header).
+# Leave empty to allow only the one-time tokens from the "Add Workstation" wizard (recommended).
 WSM_BOOTSTRAP_KEY=
 
 # Portal hardening
-WSM_REQUIRE_HTTPS=true            # production mein true rakhein (default: APP_ENV=production par true)
-WSM_ALLOWED_IPS=                  # optional, jaise: 203.0.113.10,10.0.0.0/8
+WSM_REQUIRE_HTTPS=true            # keep true in production (default: true when APP_ENV=production)
+WSM_ALLOWED_IPS=                  # optional, e.g. 203.0.113.10,10.0.0.0/8
 
-# Optional tuning (defaults dikhaye gaye hain)
-# WSM_CHECK_INTERVAL=300          # agent kitne second mein check-in kare
-# WSM_OFFLINE_AFTER=900           # itne second check-in na ho to "Offline"
-# WSM_INSTALL_TOKEN_TTL=1440      # install command kitne minute valid rahe
+# Optional tuning (defaults shown)
+# WSM_CHECK_INTERVAL=300          # seconds between agent check-ins
+# WSM_OFFLINE_AFTER=900           # seconds without a check-in before "Offline"
+# WSM_INSTALL_TOKEN_TTL=1440      # minutes an install command stays valid
 # WSM_CHECKIN_PER_MINUTE=30
 # WSM_BOOTSTRAP_PER_MINUTE=10
-# WSM_DISK=local                  # release files kis storage disk par jayein
+# WSM_DISK=local                  # storage disk for release files
 ```
 
-Phir:
+Then:
 
 ```bash
 php artisan config:clear
 php artisan migrate --force
 ```
 
-> **Purane tables:** migration `2026_11_26_000001_create_wsm_tables` pehle wale module ke tables
-> (`workstations`, `releases`, `commands`, `events`, `env_entries`) mil jaane par unhe `wsm_*` naam de deti hai.
-> Data delete nahi hota. Tables na hon to naye bana deti hai. Saath mein `wsm_releases` mein `type` aur `post_update`
-> columns, aur `wsm_install_tokens` table add hoti hai.
+> **Existing tables:** the migration `2026_11_26_000001_create_wsm_tables` finds the tables of the previous module
+> (`workstations`, `releases`, `commands`, `events`, `env_entries`) and renames them to `wsm_*`.
+> No data is deleted. If the tables don't exist, it creates new ones. It also adds the `type` and `post_update`
+> columns to `wsm_releases`, and the `wsm_install_tokens` table.
 
-### 1.2 Signing key generate karna (sirf ek baar)
+### 1.2 Generating the signing key (once)
 
-Private key **server par mat rakhiye**. Ise release banane wali machine (ya offline laptop) par rakhein.
+**Do not keep the private key on the server.** Keep it on the machine that builds releases (or an offline laptop).
 
-OpenSSL 3 ke saath:
+With OpenSSL 3:
 
 ```bash
-openssl genpkey -algorithm ed25519 -out wsm-signing.key        # PRIVATE — safe jagah rakhein
+openssl genpkey -algorithm ed25519 -out wsm-signing.key        # PRIVATE — keep it safe
 openssl pkey -in wsm-signing.key -pubout -outform DER | tail -c 32 | base64
 ```
 
-Doosri command ka output `WSM_PUBLIC_KEY` mein daalein.
+Put the output of the second command in `WSM_PUBLIC_KEY`.
 
-PHP (sodium) se bhi bana sakte hain:
+Or with PHP (sodium):
 
 ```bash
 php -r '$k=sodium_crypto_sign_keypair(); file_put_contents("wsm-signing.sk", base64_encode(sodium_crypto_sign_secretkey($k))); echo base64_encode(sodium_crypto_sign_publickey($k)),"\n";'
 ```
 
-### 1.3 Release sign karna
+### 1.3 Signing a release
 
-Signed message hamesha ye hota hai: `gasmonitor|<version>|<sha256 lowercase>`
+The signed message is always: `gasmonitor|<version>|<sha256 lowercase>`
 
 ```bash
 V=1.2.0; F=./gasmonitor
@@ -80,7 +80,7 @@ printf 'gasmonitor|%s|%s' "$V" "$SHA" > msg
 openssl pkeyutl -sign -inkey wsm-signing.key -rawin -in msg | base64 -w0; echo
 ```
 
-Agar key sodium wali hai:
+With a sodium key:
 
 ```bash
 php -r '[$v,$f,$sk]=array_slice($argv,1); echo base64_encode(sodium_crypto_sign_detached("gasmonitor|$v|".hash_file("sha256",$f), base64_decode(file_get_contents($sk)))),"\n";' 1.2.0 ./gasmonitor wsm-signing.sk
@@ -88,18 +88,18 @@ php -r '[$v,$f,$sk]=array_slice($argv,1); echo base64_encode(sodium_crypto_sign_
 
 ---
 
-## 2. Pehla release upload
+## 2. Uploading the first release
 
-**Web se:** `/workstations/releases` kholen. File drag-and-drop karein, version aur signature daalein, "latest" tick rehne dein, phir **Upload** dabayein.
-Signature galat ho, ya `WSM_PUBLIC_KEY` set na ho, to upload reject ho jaata hai.
+**From the web:** open `/workstations/releases`. Drag and drop the file, enter the version and signature, leave "latest" ticked, then click **Upload**.
+The upload is rejected if the signature is wrong or `WSM_PUBLIC_KEY` is not set.
 
-**CLI se** (badi files ke liye):
+**From the CLI** (for large files):
 
 ```bash
 php artisan workstations:release upload 1.2.0 ./gasmonitor --signature=<base64> --latest
 php artisan workstations:release list
-php artisan workstations:release latest 1.1.0      # purane version ko latest banana
-php artisan workstations:release yank 1.2.0        # kharab release wapas lena
+php artisan workstations:release latest 1.1.0      # make an older version the latest
+php artisan workstations:release yank 1.2.0        # pull a bad release
 php artisan workstations:release unyank 1.2.0
 ```
 
@@ -107,12 +107,12 @@ php artisan workstations:release unyank 1.2.0
 
 | Type | File | Install |
 |---|---|---|
-| `binary` | `gasmonitor` executable | `/opt/gasmonitor/gasmonitor` replace, `.bak` rakha jaata hai |
-| `package` | `.tar.gz` | `/opt/gasmonitor/current` mein extract (purana `previous` mein), phir optional post-update action |
+| `binary` | `gasmonitor` executable | replaces `/opt/gasmonitor/gasmonitor`, keeps a `.bak` |
+| `package` | `.tar.gz` | extracted into `/opt/gasmonitor/current` (old one moved to `previous`), then an optional post-update action |
 
-Post-update actions **sirf** `config.php` → `post_update_actions` ki fixed list se aate hain (jaise
-`composer_install_restart`). Admin sirf naam chunta hai, aur agent ko fixed argv steps milte hain. Koi typed shell string kabhi
-nahi chalti. Naya action chahiye to code mein config badal kar deploy karein.
+Post-update actions come **only** from the fixed list in `config.php` → `post_update_actions` (e.g.
+`composer_install_restart`). The admin only picks a name, and the agent receives fixed argv steps. No typed shell string
+is ever run. To add a new action, change the config in code and deploy.
 
 ```bash
 php artisan workstations:release upload 2.0.0 ./app.tar.gz --type=package --post-update=composer_install_restart --signature=<base64> --latest
@@ -120,75 +120,75 @@ php artisan workstations:release upload 2.0.0 ./app.tar.gz --type=package --post
 
 ---
 
-## 3. Pehla workstation add karna
+## 3. Adding the first workstation
 
-1. Portal mein **+ Add Workstation** kholen.
-2. Warehouse chunein, aur batayein kitni machines is command se judengi. Phir **Install command banao** dabayein.
-3. Jo command dikhe use copy karein (ye sirf ek baar dikhta hai):
+1. In the portal, open **+ Add Workstation**.
+2. Choose the warehouse and how many machines will use this command. Then click **Create install command**.
+3. Copy the command shown (it is shown only once):
    ```bash
    curl -fsSL -H "Authorization: Bearer wsi_…" https://<server>/api/agent/bootstrap/WH-01 | sudo bash
    ```
-4. Workstation par ye command chalayein. Script ye kaam karti hai:
-   - latest release download karti hai
-   - **sha256** check karti hai
-   - **Ed25519 signature** verify karti hai (OpenSSL 3 chahiye). Verify fail hua to install ruk jaata hai.
-   - `/opt/gasmonitor` mein install karti hai
-   - `.env` mein `WAREHOUSE_CODE`, `CENTRAL_API`, `AUTO_UPDATE=1`, `UPDATE_PUBLIC_KEY` set karti hai
-   - `gasmonitor` systemd service banakar start karti hai
-5. Kuch der mein workstation dashboard par **Pending** mein dikhega. Use **Approve** karein.
-   Agle check-in par use apna token, settings aur update mil jayenge.
+4. Run the command on the workstation. The script:
+   - downloads the latest release
+   - checks the **sha256**
+   - verifies the **Ed25519 signature** (needs OpenSSL 3). If verification fails, the install stops.
+   - installs into `/opt/gasmonitor`
+   - sets `WAREHOUSE_CODE`, `CENTRAL_API`, `AUTO_UPDATE=1` and `UPDATE_PUBLIC_KEY` in `.env`
+   - creates and starts the `gasmonitor` systemd service
+5. Shortly after, the workstation shows up on the dashboard as **Pending**. **Approve** it.
+   On its next check-in it receives its token, settings and update.
 
 ---
 
-## 4. Kaam kaise hota hai
+## 4. How it works
 
 ```
 Admin ──(install command)──► Workstation ──GET /api/agent/bootstrap/{wh}  (Authorization header)
                                          ◄── install.sh (release, sha256, signature, public key)
                              Workstation ──POST /api/agent/checkin  (install token / X-API-Key)
-                                         ◄── {status: pending}                ← admin Approve karta hai
+                                         ◄── {status: pending}                ← admin clicks Approve
                              Workstation ──POST /api/agent/checkin
-                                         ◄── {status: approved, token: wst_…} ← token DB mein sirf sha256 hash
+                                         ◄── {status: approved, token: wst_…} ← only the sha256 hash is stored
                              Workstation ──POST /api/agent/checkin  (Authorization: Bearer wst_…)
                                          ◄── {update?, env?, commands?}
                              Workstation ──GET /api/agent/releases/{id}/download (Bearer)
 ```
 
-Saari decision logic ek hi class mein hai: `App\Workstations\Support\AgentProtocol::decide()`.
+All decision logic lives in one class: `App\Workstations\Support\AgentProtocol::decide()`.
 
 **Check-in response:**
-- `update`: `{id, version, type, sha256, signature, size, post_update?}`. Ye tabhi aata hai jab teeno baatein sach hon:
-  - auto-update on ho
-  - pinned release ho (warna latest), aur wo current version ke barabar na ho
-  - wo agent ki `bad_versions` list mein na ho
+- `update`: `{id, version, type, sha256, signature, size, post_update?}`. Sent only when all three hold:
+  - auto-update is on
+  - there is a pinned release (otherwise the latest), and it differs from the current version
+  - it is not in the agent's `bad_versions` list
 
-  **Unsigned ya galat-signed release kabhi offer nahi hota.**
-- `env`: `{hash, values}`. Settings ka order global < warehouse < workstation hai, aur locked keys kabhi nahi bheji jaatin. Ye tabhi aata hai jab agent ka `env_hash` alag ho.
-- `commands`: sirf `restart`, `sync_now`, `stop_polling`. Bhejne ke baad unka status `sent` ho jaata hai. Agent ka ack aane par `done` ya `failed`.
+  **An unsigned or wrongly signed release is never offered.**
+- `env`: `{hash, values}`. Settings are merged global < warehouse < workstation, and locked keys are never sent. Sent only when the agent's `env_hash` differs.
+- `commands`: only `restart`, `sync_now`, `stop_polling`. Marked `sent` once delivered, then `done` or `failed` when the agent acks.
 
-**Agent jo bhejta hai:** `workstation_id`, `version`, telemetry (`hostname`, `devices_total`, `alerts`, …), `env_hash`,
+**What the agent sends:** `workstation_id`, `version`, telemetry (`hostname`, `devices_total`, `alerts`, …), `env_hash`,
 `bad_versions`, `reports[]` (`update_installed`, `update_failed`, `update_ok`, `rollback`, `env_applied`, `env_error`),
-aur `command_results[]` (`{id, status: ok|failed, result}`).
+and `command_results[]` (`{id, status: ok|failed, result}`).
 
-**Agent side zaroori niyam:** agent update tabhi install kare jab `UPDATE_PUBLIC_KEY` se
-`gasmonitor|version|sha256` ka signature verify ho jaaye. Installer `.env` mein `REQUIRE_SIGNED_UPDATES=1` bhi likhta hai.
-`run.sh` crash-loop guard hai: update ke baad service 3 baar se zyada crash ho to wo purane binary/`.env` par rollback kar deta hai.
+**Required agent behaviour:** the agent must install an update only if the signature over `gasmonitor|version|sha256`
+verifies against `UPDATE_PUBLIC_KEY`. The installer also writes `REQUIRE_SIGNED_UPDATES=1` to `.env`.
+`run.sh` is a crash-loop guard: if the service crashes more than 3 times after an update, it rolls back to the previous binary/`.env`.
 
 ---
 
 ## 5. Security checklist
 
-| Kya | Kaise |
+| What | How |
 |---|---|
-| Bootstrap key URL mein nahi | Sirf `Authorization: Bearer` / `X-API-Key` header. Query string wali key ignore hoti hai |
-| Install command | Ek-baar ka `wsi_` token: warehouse se bandha hua, `max_uses` tak, `WSM_INSTALL_TOKEN_TTL` minute mein expire. DB mein hash |
-| Signature mandatory | `WSM_PUBLIC_KEY` ke bina upload reject. Unsigned release na offer hota hai, na download, na install |
-| Commands | Fixed whitelist. DB mein koi aur command daal bhi di jaaye to agent ko nahi bheji jaati |
-| Tokens | Workstation aur install tokens sirf sha256 hash ke roop mein store |
-| Rate limit | check-in: `WSM_CHECKIN_PER_MINUTE` (IP + workstation), bootstrap/download: `WSM_BOOTSTRAP_PER_MINUTE` (IP), login: 5/min |
+| No bootstrap key in URLs | Only the `Authorization: Bearer` / `X-API-Key` header. A key in the query string is ignored |
+| Install command | One-time `wsi_` token: bound to a warehouse, limited to `max_uses`, expires after `WSM_INSTALL_TOKEN_TTL` minutes. Stored hashed |
+| Mandatory signatures | Upload rejected without `WSM_PUBLIC_KEY`. Unsigned releases are never offered, downloaded or installed |
+| Commands | Fixed whitelist. Even if another command is inserted into the DB, it is never sent to the agent |
+| Tokens | Workstation and install tokens are stored only as sha256 hashes |
+| Rate limits | check-in: `WSM_CHECKIN_PER_MINUTE` (IP + workstation), bootstrap/download: `WSM_BOOTSTRAP_PER_MINUTE` (IP), login: 5/min |
 | Locked env keys | `DB_URL`, `WORKSTATION_ID`, `WAREHOUSE_CODE`, `CENTRAL_API*`, `CLOUD_API_KEY`, `UPDATE_PUBLIC_KEY`, `AUTO_UPDATE` |
-| Numeric env keys | Integer / decimal validation, galat value par inline error |
-| Portal | Login (session), `WSM_REQUIRE_HTTPS`, optional `WSM_ALLOWED_IPS` |
+| Numeric env keys | Integer / decimal validation, with an inline error for bad values |
+| Portal | Session login, `WSM_REQUIRE_HTTPS`, optional `WSM_ALLOWED_IPS` |
 
 ---
 
@@ -198,6 +198,6 @@ aur `command_results[]` (`{id, status: ok|failed, result}`).
 php artisan test tests/Feature/Workstations
 ```
 
-Inme ye cover hai: bootstrap (header-only key, install token, expiry, warehouse mismatch, rate limit), check-in states
-(pending/approved/blocked, token issue), signature reject, command whitelist, env merge/lock, update decision
-(pinned/latest/auto_update off/bad versions/package post-update), admin portal pages aur CLI command.
+Covers: bootstrap (header-only key, install token, expiry, warehouse mismatch, rate limit), check-in states
+(pending/approved/blocked, token issue), signature rejection, command whitelist, env merge/lock, update decision
+(pinned/latest/auto_update off/bad versions/package post-update), admin portal pages and the CLI command.

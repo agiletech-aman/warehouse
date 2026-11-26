@@ -33,19 +33,19 @@ class AgentProtocol
     public static function validateEnvEntry(string $key, string $value): ?string
     {
         if (!preg_match('/^[A-Z][A-Z0-9_]{0,63}$/', $key)) {
-            return 'Key sirf CAPITAL letters, numbers aur _ mein ho (jaise POLL_INTERVAL), max 64 characters.';
+            return 'Key must use only CAPITAL letters, numbers and _ (e.g. POLL_INTERVAL), max 64 characters.';
         }
         if (in_array($key, self::ENV_LOCKED, true)) {
-            return "$key locked hai — ye sirf workstation par hi set hoti hai.";
+            return "$key is locked — it can only be set on the workstation itself.";
         }
         if (str_contains($value, "\n") || str_contains($value, "\r")) {
-            return 'Value ek hi line mein honi chahiye.';
+            return 'Value must be a single line.';
         }
         if (in_array($key, self::ENV_INT, true) && !preg_match('/^-?\d+$/', trim($value))) {
-            return "$key ki value poora number honi chahiye (jaise 30).";
+            return "$key must be a whole number (e.g. 30).";
         }
         if (in_array($key, self::ENV_FLOAT, true) && !is_numeric(trim($value))) {
-            return "$key ki value number honi chahiye (jaise 2.5).";
+            return "$key must be a number (e.g. 2.5).";
         }
         return null;
     }

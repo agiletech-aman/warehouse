@@ -10,9 +10,9 @@ SERVICE=gasmonitor
 say()  { echo -e "\033[1;32m==>\033[0m $*"; }
 die()  { echo -e "\033[1;31mERROR:\033[0m $*" >&2; exit 1; }
 
-[ "$(id -u)" = 0 ] || die "root se chalayein:  ... | sudo bash"
-for c in curl sha256sum openssl base64 install; do command -v "$c" >/dev/null || die "'$c' install nahi hai"; done
-[ -n "$PUBKEY" ] || die "server par signing key set nahi hai"
+[ "$(id -u)" = 0 ] || die "run as root:  ... | sudo bash"
+for c in curl sha256sum openssl base64 install; do command -v "$c" >/dev/null || die "'$c' is not installed"; done
+[ -n "$PUBKEY" ] || die "no signing key is set on the server"
 
 # reuse existing install dir/user if the service already exists
 DIR="${INSTALL_DIR:-}"; RUNUSER="${RUN_USER:-}"
@@ -26,23 +26,23 @@ say "install dir: $DIR   user: $RUNUSER   warehouse: $WH   version: $VERSION ($T
 mkdir -p "$DIR"
 
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
-say "release download ho raha hai..."
+say "downloading release..."
 curl -fsSL -H "X-API-Key: $ENROLL_KEY" "$AGENT_API/releases/$REL_ID/download" -o "$WORK/pkg"
 
-say "sha256 check..."
-echo "$SHA256  $WORK/pkg" | sha256sum -c - >/dev/null || die "sha256 match nahi hua — file kharab ya badli hui hai"
+say "checking sha256..."
+echo "$SHA256  $WORK/pkg" | sha256sum -c - >/dev/null || die "sha256 mismatch — file is corrupt or was modified"
 
-say "Ed25519 signature check..."
+say "checking Ed25519 signature..."
 # raw 32-byte Ed25519 key -> SubjectPublicKeyInfo PEM (DER prefix 302a300506032b6570032100)
 { printf '\x30\x2a\x30\x05\x06\x03\x2b\x65\x70\x03\x21\x00'; echo "$PUBKEY" | base64 -d; } > "$WORK/pub.der"
-openssl pkey -pubin -inform DER -in "$WORK/pub.der" -out "$WORK/pub.pem" 2>/dev/null || die "public key galat hai"
+openssl pkey -pubin -inform DER -in "$WORK/pub.der" -out "$WORK/pub.pem" 2>/dev/null || die "invalid public key"
 printf '%s' "gasmonitor|$VERSION|$SHA256" > "$WORK/msg"
-echo "$SIGNATURE" | base64 -d > "$WORK/sig" 2>/dev/null || die "signature galat format mein hai"
+echo "$SIGNATURE" | base64 -d > "$WORK/sig" 2>/dev/null || die "signature has an invalid format"
 openssl pkeyutl -verify -pubin -inkey "$WORK/pub.pem" -rawin -in "$WORK/msg" -sigfile "$WORK/sig" >/dev/null 2>&1 \
-  || die "signature verify nahi hua (OpenSSL 3 chahiye) — install rok diya"
+  || die "signature verification failed (OpenSSL 3 required) — install aborted"
 
 if [ "$TYPE" = "package" ]; then
-  say "package extract ho raha hai..."
+  say "extracting package..."
   [ -d "$DIR/current" ] && rm -rf "$DIR/previous" && mv "$DIR/current" "$DIR/previous"
   mkdir -p "$DIR/current"
   tar -xzf "$WORK/pkg" -C "$DIR/current" --no-same-owner
@@ -52,11 +52,11 @@ if [ "$TYPE" = "package" ]; then
 POSTUPDATE
 )
   if [ -n "$POST_UPDATE" ]; then
-    say "post-update steps chal rahe hain..."
+    say "running post-update steps..."
     ( cd "$DIR/current" && while IFS= read -r line; do [ -n "$line" ] && eval "$line"; done <<< "$POST_UPDATE" ) \
-      || die "post-update step fail hua"
+      || die "post-update step failed"
   fi
-  say "package v$VERSION install ho gaya: $DIR/current"
+  say "package v$VERSION installed: $DIR/current"
   exit 0
 fi
 
@@ -109,7 +109,7 @@ UNITFILE
   systemctl daemon-reload
   systemctl enable "$SERVICE" >/dev/null 2>&1
   systemctl restart "$SERVICE"
-  say "GasMonitor chal raha hai. Ab Workstation Manager mein jaakar is workstation ko Approve karein."
+  say "GasMonitor is running. Now open Workstation Manager and Approve this workstation."
 else
-  say "SKIP_SYSTEMD=1: files rakh di, service ko chhua nahi"
+  say "SKIP_SYSTEMD=1: files placed, service not touched"
 fi

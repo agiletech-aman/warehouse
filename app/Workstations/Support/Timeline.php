@@ -7,27 +7,27 @@ class Timeline
 {
     public static function commandName(string $c): string
     {
-        return ['restart' => 'Restart', 'sync_now' => 'Sync now', 'stop_polling' => 'Polling band karo'][$c] ?? $c;
+        return ['restart' => 'Restart', 'sync_now' => 'Sync now', 'stop_polling' => 'Stop polling'][$c] ?? $c;
     }
 
     public static function event(string $type, ?string $version, ?string $message): string
     {
-        $v = $version ? "v$version" : 'naya version';
+        $v = $version ? "v$version" : 'New version';
         $text = match ($type) {
-            'registered' => 'Workstation pehli baar juda — approval ka intezaar',
-            'token_issued' => 'Workstation ko login token mil gaya',
-            'version_changed' => "Version badla: $message",
-            'update_installed' => "$v install ho gaya",
-            'update_ok' => "$v theek chal raha hai",
-            'update_failed' => "$v install nahi ho paya",
-            'rollback' => "$v mein dikkat thi — purane version par wapas gaya",
-            'env_applied' => 'Nayi settings lag gayi',
-            'env_error' => 'Kuch settings lag nahi payi',
-            'admin_approve' => 'Admin ne approve kiya',
-            'admin_block' => 'Admin ne block kiya',
-            'admin_reset_token' => 'Admin ne token reset kiya',
-            'admin_save' => 'Admin ne details update ki',
-            'admin_command' => 'Admin ne "' . self::commandName((string)$message) . '" bheja',
+            'registered' => 'Workstation connected for the first time — waiting for approval',
+            'token_issued' => 'Workstation received its access token',
+            'version_changed' => "Version changed: $message",
+            'update_installed' => "$v installed",
+            'update_ok' => "$v is running fine",
+            'update_failed' => "$v failed to install",
+            'rollback' => "$v had a problem — rolled back to the previous version",
+            'env_applied' => 'New settings applied',
+            'env_error' => 'Some settings could not be applied',
+            'admin_approve' => 'Approved by admin',
+            'admin_block' => 'Blocked by admin',
+            'admin_reset_token' => 'Token reset by admin',
+            'admin_save' => 'Details updated by admin',
+            'admin_command' => 'Admin sent "' . self::commandName((string)$message) . '"',
             default => $type,
         };
         if ($message && !in_array($type, ['version_changed', 'admin_command', 'registered', 'token_issued'], true)
@@ -50,27 +50,27 @@ class Timeline
     {
         $name = self::commandName($cmd);
         $s = match ($status) {
-            'pending' => 'queue mein hai, agle check-in par jayega',
-            'sent' => 'workstation ko bhej diya',
-            'done' => 'ho gaya',
-            'failed' => 'fail ho gaya',
+            'pending' => 'queued, will be sent on the next check-in',
+            'sent' => 'sent to the workstation',
+            'done' => 'completed',
+            'failed' => 'failed',
             default => $status,
         };
         return "\"$name\" $s" . ($result ? " — $result" : '');
     }
 
-    /** "5 min pehle" style. */
-    public static function pehle($t): string
+    /** "5 min ago" style. */
+    public static function ago($t): string
     {
         if (!$t) {
-            return 'kabhi nahi';
+            return 'never';
         }
         $s = (int)$t->diffInSeconds(now(), true);
         return match (true) {
-            $s < 60 => 'abhi abhi',
-            $s < 3600 => intdiv($s, 60) . ' min pehle',
-            $s < 86400 => intdiv($s, 3600) . ' ghante pehle',
-            default => intdiv($s, 86400) . ' din pehle',
+            $s < 60 => 'just now',
+            $s < 3600 => intdiv($s, 60) . ' min ago',
+            $s < 86400 => intdiv($s, 3600) . ' h ago',
+            default => intdiv($s, 86400) . ' days ago',
         };
     }
 }
