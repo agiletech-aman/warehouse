@@ -54,9 +54,8 @@ class AgentController extends Controller
         $cmds = $row ? Command::where('workstation_id', $wid)->where('status', 'pending')->get(['id', 'command'])->toArray() : [];
 
         // A known workstation with a token authenticates with Bearer; enrollment only matters before that.
-        $needsEnroll = !$row || empty($row->token_hash);
-        $enroll = $needsEnroll ? $this->enrollment($this->enrollKey($r))
-            : ['ok' => false, 'token' => null];
+        // Always evaluated: a valid enrollment key also lets an agent that lost its token get a new one.
+        $enroll = $this->enrollment($this->enrollKey($r));
 
         $res = AgentProtocol::decide($row ? $row->getAttributes() : null, $in, [
             'now' => now()->toDateTimeString(), 'request_ip' => $r->ip(),

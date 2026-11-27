@@ -99,10 +99,27 @@ class AgentApiTest extends WorkstationTestCase
         $this->assertSame(hash('sha256', $token), $stored);
         $this->assertNotSame($token, $stored);
 
-        // now the bootstrap key alone is no longer enough
-        $this->postJson('/api/agent/checkin', ['workstation_id' => 'ws-001'], ['X-API-Key' => 'boot-secret'])->assertStatus(401);
         $this->postJson('/api/agent/checkin', ['workstation_id' => 'ws-001'], ['Authorization' => "Bearer $token"])
             ->assertOk()->assertJsonMissingPath('token');
+        // a wrong token without a valid key is still rejected
+        $this->postJson('/api/agent/checkin', ['workstation_id' => 'ws-001'], ['Authorization' => 'Bearer wst_wrong'])->assertStatus(401);
+    }
+
+    public function test_agent_that_lost_its_token_gets_a_new_one_with_valid_key(): void
+    {
+        [, $old] = $this->approvedWithToken('ws-001');
+        // restart: no Bearer, only the enrollment key
+        $new = $this->postJson('/api/agent/checkin', ['workstation_id' => 'ws-001'], ['X-API-Key' => 'boot-secret'])
+            ->assertOk()->assertJson(['status' => 'approved'])->json('token');
+        $this->assertStringStartsWith('wst_', $new);
+        $this->assertSame('approved', Workstation::first()->status);
+        $this->assertSame(AgentProtocol::hashToken($new), Workstation::first()->token_hash);
+        // key sent as Bearer works too; the old token is now dead
+        $this->postJson('/api/agent/checkin', ['workstation_id' => 'ws-001'], ['Authorization' => 'Bearer boot-secret'])
+            ->assertOk()->assertJsonPath('status', 'approved');
+        $this->postJson('/api/agent/checkin', ['workstation_id' => 'ws-001'], ['Authorization' => "Bearer $old"])->assertStatus(401);
+        // no token and a wrong key: rejected
+        $this->postJson('/api/agent/checkin', ['workstation_id' => 'ws-001'], ['X-API-Key' => 'nope'])->assertStatus(401);
     }
 
     public function test_blocked_workstation_gets_403(): void

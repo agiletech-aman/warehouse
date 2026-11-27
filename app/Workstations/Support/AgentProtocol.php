@@ -141,9 +141,15 @@ class AgentProtocol
         if ($ws !== null && ($ws['status'] ?? '') === 'blocked') {
             return self::fail($res, 403, 'workstation blocked');
         }
+        $rekeyed = false;
         if ($ws !== null && !empty($ws['token_hash'])) {
             $bearer = $ctx['bearer'] ?? null;
-            if (!$bearer || !hash_equals($ws['token_hash'], self::hashToken($bearer))) {
+            $tokenOk = $bearer && hash_equals($ws['token_hash'], self::hashToken($bearer));
+            if (!$tokenOk && !empty($ctx['enroll_ok'])) {
+                // Agent lost its token (e.g. restart) but presents a valid enrollment key: issue a new one.
+                $ws['token_hash'] = null;
+                $rekeyed = true;
+            } elseif (!$tokenOk) {
                 return self::fail($res, 401, 'token required or invalid');
             }
         } elseif (empty($ctx['enroll_ok'])) {
@@ -221,7 +227,7 @@ class AgentProtocol
             $plain = self::newToken();
             $res['ws']['token_hash'] = self::hashToken($plain);
             $res['events'][] = ['type' => 'token_issued', 'version' => $ver, 'created_at' => $now,
-                'message' => 'workstation token issued'];
+                'message' => $rekeyed ? 'workstation token re-issued (agent had lost its token)' : 'workstation token issued'];
             $body['token'] = $plain;
         }
 
